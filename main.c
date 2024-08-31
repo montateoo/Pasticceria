@@ -5,10 +5,9 @@
 #include <time.h>
 
 #define MAX_NAME_LENGTH 255
+#define BUFFER_SIZE 30000
 
 typedef enum { RED, BLACK } Color;
-
-//TODO DARE DIMENSIONE MAX PER I NOMI
 
 //===================================NODI=RICETTE===================
 typedef struct Ingrediente {
@@ -18,13 +17,11 @@ typedef struct Ingrediente {
 
 typedef struct RecipeNode {
     char *key;                     //la chiave è il nome della ricetta
-    Ingrediente *ingredienti;      // lista degli ingredienti necessari
-    int num_ingredienti;           // Numero di ingredienti nella ricetta
-    int activeOrders;              // Puntatore alla ricetta (equivalente a 'key')
-    Color color;                   // Colore del nodo (RED o BLACK)
-    struct RecipeNode *left;       // Puntatore al figlio sinistro
-    struct RecipeNode *right;      // Puntatore al figlio destro
-    struct RecipeNode *parent;     // Puntatore al nodo genitore
+    Ingrediente *ingredienti;                       // lista degli ingredienti necessari
+    int num_ingredienti;                            // Numero di ingredienti nella ricetta
+    int activeOrders;                               // Puntatore alla ricetta (equivalente a 'key')
+    Color color;                                    // Colore del nodo (RED o BLACK)
+    struct RecipeNode *left, *right, *parent;       // Puntatore ai figli
 } RecipeNode;
 
 typedef struct {
@@ -33,19 +30,17 @@ typedef struct {
     int num_ricette;               // Numero di ricette nel ricettario
 } Catalogo;
 
-//===================================NODI=MAGAZZINO===================
+//===================================NODI=MAGAZZINO========================
 
 // Definizione della struttura per un lotto
 typedef struct Lotto {
     int ammount;        // Quantità in grammi
-    int scadenza;       // Data di scadenza (time_t per rappresentare il tempo)
-    Color color;        // Colore del nodo (RED o BLACK)
-    struct Lotto *left, *right, *parent; // Puntatori per l'albero
+    int scadenza;       // Data di scadenza
 } Lotto;
 
 // Definizione della struttura per un ingrediente
 typedef struct ResourceNode {
-    char nome[MAX_NAME_LENGTH];  // Nome dell'ingrediente
+    char *key;   // la chiave è il nome dell'ingrediente
     Lotto *lotti;                // Puntatore ai lotti disponibili
     int num_lotti;               // Numero di lotti disponibili
     int maxGrammi;               // Totale degli ingredienti
@@ -55,47 +50,40 @@ typedef struct ResourceNode {
 
 // Definizione della struttura per il magazzino
 typedef struct {
-    ResourceNode *ingredienti; // Puntatore all'array degli ingredienti nel magazzino
-    int num_ingredienti;      // Numero di ingredienti nel magazzino
+    ResourceNode *root;              // Radice dell'albero RED-BLACK che gestisce le ricette
+    ResourceNode *nil;               // Nodo sentinella per rappresentare le foglie NIL delle ricette
+    int num_risorse;                 // Numero di ricette nel ricettario
 } Magazzino;
 
 //===================================NODI=ORDINI=======================================
+typedef struct{
+    char *nome;                // Puntatore al nome dell'ordine
+    int ammount;               // Quantità richiesta dell'ordine
+    int peso;                  // Peso ordine
+    int arrivalTime;           // Tempo di arrivo dell'ordine
+    RecipeNode *associatedRecipe; //puntatore alla ricetta associata all'ordine
+}Ordine;
+
+typedef struct OrderNode{
+    Ordine *ordinePronto;
+    int key;                                 //la chiave è il tempo di arrivo
+    Color color;                             // Colore del nodo (RED o BLACK)
+    struct OrderNode *left, *right, *parent; // Puntatori per l'albero
+}OrderNode;
 
 // Definizione del struct Ordine
 typedef struct {
-    char *nome;           // Puntatore al nome dell'ordine
-    int ammount;          // Quantità richiesta dell'ordine
-    int peso;             // Peso ordine
-    int status;           // 0 preparare, 1 attesa, 3 pronto per la spedizione, 4 spedito
-    int arrivalTime;      // Tempo di arrivo dell'ordine
-    Ricetta *associatedRecipe; //puntatore alla ricetta associata all'ordine
-} Ordine;
-
-// Definizione del nodo dell'albero rosso-nero per gestione ordini
-typedef struct OrderNode {
-    Ordine ordine;              // Dati dell'ordine
-    Color color;                 // Colore del nodo (RED o BLACK)
-    struct OrderNode *left, *right, *parent; // Puntatori per l'albero
-} OrderNode;
-
-typedef struct {
-    OrderNode *ordinazioni; // Puntatore all'array delle ordinazioni
-    int num_ordinazioni_pronte;      // Numero di ordinazioni pronte per la spedizione
-} Ordinazioni;
-
-typedef struct {
-    Ordine ordine;        // L'ordine stesso
-    OrderNode *nodoAlbero; // Puntatore al nodo dell'albero rosso-nero che contiene l'ordine
-} OrdineConNodo;
+    Ordine *sospesi;             // 0 preparare, 1 attesa, 3 pronto per la spedizione, 4 spedito
+    OrderNode *root;             // Radice dell'albero che gestisce gli ordini pronti
+    OrderNode *nil;              // Nodo sentinella per rappresentare le foglie NIL delle ricette
+    int num_ordinazioni_sospese; // Numero di ordinazioni pronte per la spedizione
+    int num_ordinazioni_pronte;  // Numero di ordinazioni pronte per la spedizione
+}Ordinazioni;
 //===================================CORRIERE==========================
-//TODO trasformare in un albero?
 
-// Definizione della struttura del corriere
 typedef struct {
     int timeCorriere;    //periodicita corriere
     int caricoMax;       //carico massimo corriere
-    char **ingredienti;  //Puntatore a un array dinamico dei prodotti contenuti
-    int *ammount;        //Puntatore dinamico alle quantità dei prodotti conteuti
     int caricoParziale;   //carcico attuale
 } Corriere;
 
@@ -105,22 +93,18 @@ typedef struct {
 Catalogo catalogo;
 
 //magazino degli ingredienti
-Magazzino magazzino = {NULL, 0};
+Magazzino magazzino;
 
-//Ordinazioni del sito
-Ordinazioni ordinazioni = {NULL, 0};
+//Ordinazioni
+Ordinazioni ordinazioni;
 
 //def corriere
-Corriere corriere = {0,0,NULL,NULL,0};
+Corriere corriere = {0,0,0};
 
 //quanti di tempo
 int tempo = 0;
 
-#define BUFFER_SIZE 30000
-
-FILE *file2;
-
-//========================================Funzioni=Di=Inizializzazione======================================
+//==========================Funzioni=Di=Inizializzazione=Alberi===================================
 void initCatalogo(Catalogo *T) {
     // Allocazione memoria per il nodo sentinella nil
     T->nil = (RecipeNode*)malloc(sizeof(RecipeNode));
@@ -142,9 +126,50 @@ void initCatalogo(Catalogo *T) {
     T->num_ricette = 0;
 }
 
-//========================================FUNZIONI===========================================================
+void initMagazzino(Magazzino *T) {
+    // Allocazione memoria per il nodo sentinella nil
+    T->nil = (ResourceNode*)malloc(sizeof(ResourceNode));
 
-RecipeNode* createRecipeNode(const char* key, Ingrediente* ingredienti, const int num_ingredienti) {
+    // Inizializzazione del nodo sentinella nil
+    T->nil->color = BLACK;
+    T->nil->left = T->nil;
+    T->nil->right = T->nil;
+    T->nil->parent = T->nil;
+    T->nil->key = NULL;
+    T->nil->lotti = NULL;
+    T->nil->num_lotti = 0;
+    T->nil->maxGrammi = 0;
+
+    // Inizializzazione della radice dell'albero
+    T->root = T->nil;
+
+    // Inizializzazione del numero di ricette
+    T->num_risorse = 0;
+}
+
+void initOrdinazioni(Ordinazioni *T) {
+    // Allocazione memoria per il nodo sentinella nil
+    T->nil = (OrderNode*)malloc(sizeof(OrderNode));
+
+    // Inizializzazione del nodo sentinella nil
+    T->nil->color = BLACK;
+    T->nil->left = T->nil;
+    T->nil->right = T->nil;
+    T->nil->parent = T->nil;
+    T->nil->key = 0;
+    T->nil->ordinePronto = NULL;
+
+    // Inizializzazione della radice dell'albero
+    T->root = T->nil;
+
+    // Inizializzazione del numero di ricette
+    T->num_ordinazioni_pronte = 0;
+    T->num_ordinazioni_sospese = 0;
+}
+
+//========================================AGGIUNGI=RICETTA========================================================
+
+RecipeNode* createRecipeNode(const char* key) {
     // Allocazione della memoria per il nuovo nodo della ricetta
     RecipeNode* recipenode = (RecipeNode*)malloc(sizeof(RecipeNode));
 
@@ -152,8 +177,8 @@ RecipeNode* createRecipeNode(const char* key, Ingrediente* ingredienti, const in
     recipenode->key = strdup(key);  // Duplica la stringa per la chiave
 
     // Assegnazione degli ingredienti e il numero di ingredienti
-    recipenode->ingredienti = ingredienti;
-    recipenode->num_ingredienti = num_ingredienti;
+    recipenode->ingredienti = NULL;
+    recipenode->num_ingredienti = 0;
 
     // Assegnazione del numero di ordini attivi
     recipenode->activeOrders = 0;
@@ -165,560 +190,599 @@ RecipeNode* createRecipeNode(const char* key, Ingrediente* ingredienti, const in
     return recipenode;
 }
 
-Ingrediente* createIngredientRecipe(const char* ingrediente, int quantita) {
-    // Allocazione della memoria per un nuovo ingrediente
-    Ingrediente* node = (Ingrediente*)malloc(sizeof(Ingrediente));
+void leftRotateRicetta(Catalogo *T, RecipeNode *x) {
+    RecipeNode *y = x->right;           // y viene settato come il figlio destro di x
+    x->right = y->left;                 // il sottoalbero sinistro di y diventa quello destro di x
 
-    // Assegnazione dei valori all'ingrediente
-    node->ingrediente = strdup(ingrediente);  // Duplica la stringa per il nome dell'ingrediente
-    node->quantita = quantita;
-
-    return node;
-}
-
-//TODO OK
-
-void rotateLeftIngredient(IngredientNode **root, IngredientNode *x) {
-    IngredientNode *y = x->right;
-    x->right = y->left;
-
-    if (y->left != NULL)
-        y->left->parent = x;
-
-    y->parent = x->parent;
-
-    if (x->parent == NULL)
-        *root = y;
-    else if (x == x->parent->left)
-        x->parent->left = y;
-    else
-        x->parent->right = y;
-
-    y->left = x;
-    x->parent = y;
-}
-
-void rotateRightIngredient(IngredientNode **root, IngredientNode *y) {
-    IngredientNode *x = y->left;
-    y->left = x->right;
-
-    if (x->right != NULL)
-        x->right->parent = y;
-
-    x->parent = y->parent;
-
-    if (y->parent == NULL)
-        *root = x;
-    else if (y == y->parent->left)
-        y->parent->left = x;
-    else
-        y->parent->right = x;
-
-    x->right = y;
-    y->parent = x;
-}
-
-void fixViolationIngredient(IngredientNode **root, const IngredientNode *pt) {
-    IngredientNode *parent_pt = NULL;
-    IngredientNode *grand_parent_pt = NULL;
-
-    while ((pt != *root) && (pt->color != BLACK) && (pt->parent->color == RED)) {
-        parent_pt = pt->parent;
-        grand_parent_pt = pt->parent->parent;
-
-        if (parent_pt == grand_parent_pt->left) {
-            IngredientNode *uncle_pt = grand_parent_pt->right;
-
-            if (uncle_pt != NULL && uncle_pt->color == RED) {
-                grand_parent_pt->color = RED;
-                parent_pt->color = BLACK;
-                uncle_pt->color = BLACK;
-                pt = grand_parent_pt;
-            } else {
-                if (pt == parent_pt->right) {
-                    rotateLeftIngredient(root, parent_pt);
-                    pt = parent_pt;
-                    parent_pt = pt->parent;
-                }
-
-                rotateRightIngredient(root, grand_parent_pt);
-                Color tmp = parent_pt->color;
-                parent_pt->color = grand_parent_pt->color;
-                grand_parent_pt->color = tmp;
-                pt = parent_pt;
-            }
-        } else {
-            IngredientNode *uncle_pt = grand_parent_pt->left;
-
-            if (uncle_pt != NULL && uncle_pt->color == RED) {
-                grand_parent_pt->color = RED;
-                parent_pt->color = BLACK;
-                uncle_pt->color = BLACK;
-                pt = grand_parent_pt;
-            } else {
-                if (pt == parent_pt->left) {
-                    rotateRightIngredient(root, parent_pt);
-                    pt = parent_pt;
-                    parent_pt = pt->parent;
-                }
-
-                rotateLeftIngredient(root, grand_parent_pt);
-                Color tmp = parent_pt->color;
-                parent_pt->color = grand_parent_pt->color;
-                grand_parent_pt->color = tmp;
-                pt = parent_pt;
-            }
-        }
+    if (y->left != T->nil) {
+        y->left->parent = x;            // aggiorna il padre del sottoalbero sinistro di y
     }
 
-    (*root)->color = BLACK;
-}
+    y->parent = x->parent;              // attacca il padre di x a y
 
-//=======================FUNZIONI=GESTIONE=ALBERO=CATALOGO==============================================
-
-// Funzione per effettuare una rotazione a sinistra
-void rotateLeft(Catalogo *catalogo, RecipeNode *x) {
-    RecipeNode *y = x->right;
-    x->right = y->left;
-    if (y->left != NULL)
-        y->left->parent = x;
-
-    y->parent = x->parent;
-    if (x->parent == NULL)
-        catalogo->root = y;
-    else if (x == x->parent->left)
-        x->parent->left = y;
-    else
-        x->parent->right = y;
-
-    y->left = x;
-    x->parent = y;
-}
-
-// Funzione per effettuare una rotazione a destra
-void rotateRight(Catalogo *catalogo, RecipeNode *y) {
-    RecipeNode *x = y->left;
-    y->left = x->right;
-    if (x->right != NULL)
-        x->right->parent = y;
-
-    x->parent = y->parent;
-    if (y->parent == NULL)
-        catalogo->root = x;
-    else if (y == y->parent->left)
-        y->parent->left = x;
-    else
-        y->parent->right = x;
-
-    x->right = y;
-    y->parent = x;
-}
-
-// Funzione per correggere le violazioni dopo l'inserimento
-void fixViolation(Catalogo *catalogo, RecipeNode *z) {
-    while (z != catalogo->root && z->parent->color == RED) {
-        if (z->parent == z->parent->parent->left) {
-            RecipeNode *y = z->parent->parent->right;
-            if (y != NULL && y->color == RED) {  // Caso 1: lo zio è RED
-                z->parent->color = BLACK;
-                y->color = BLACK;
-                z->parent->parent->color = RED;
-                z = z->parent->parent;
-            } else {
-                if (z == z->parent->right) {  // Caso 2: lo zio è BLACK e z è figlio destro
-                    z = z->parent;
-                    rotateLeft(catalogo, z);
-                }
-                // Caso 3: lo zio è BLACK e z è figlio sinistro
-                z->parent->color = BLACK;
-                z->parent->parent->color = RED;
-                rotateRight(catalogo, z->parent->parent);
-            }
-        } else {  // Simmetrico ai casi precedenti
-            RecipeNode *y = z->parent->parent->left;
-            if (y != NULL && y->color == RED) {
-                z->parent->color = BLACK;
-                y->color = BLACK;
-                z->parent->parent->color = RED;
-                z = z->parent->parent;
-            } else {
-                if (z == z->parent->left) {
-                    z = z->parent;
-                    rotateRight(catalogo, z);
-                }
-                z->parent->color = BLACK;
-                z->parent->parent->color = RED;
-                rotateLeft(catalogo, z->parent->parent);
-            }
-        }
-    }
-    catalogo->root->color = BLACK;  // Assicurarsi che la radice sia sempre nera
-}
-
-//===============================RICETTE===========================================
-
-//aggiungi nuovo nodo nell'albero ricette
-IngredientNode* BSTInsertIngredient(IngredientNode* root, IngredientNode* pt) {
-    if (root == NULL)
-        return pt;
-
-    if (strcmp(pt->ingrediente, root->ingrediente) < 0) {
-        root->left = BSTInsertIngredient(root->left, pt);
-        root->left->parent = root;
-    } else if (strcmp(pt->ingrediente, root->ingrediente) > 0) {
-        root->right = BSTInsertIngredient(root->right, pt);
-        root->right->parent = root;
-    }
-
-    return root;
-}
-
-//inserisci un nuovo ingrediente nella ricetta
-void insertIngredient(Ricetta *ricetta, const char* ingrediente, int quantita) {
-    IngredientNode* pt = createIngredientNode(ingrediente, quantita);
-
-    ricetta->root = BSTInsertIngredient(ricetta->root, pt);
-    fixViolationIngredient(&ricetta->root, pt);
-}
-
-//ricerca ingrediente nella ricetta
-IngredientNode* searchIngredientRecipe(IngredientNode* root, const char* ingrediente) {
-    if (root == NULL || strcmp(root->ingrediente, ingrediente) == 0)
-        return root;
-
-    if (strcmp(ingrediente, root->ingrediente) < 0)
-        return searchIngredientRecipe(root->left, ingrediente);
-
-    return searchIngredientRecipe(root->right, ingrediente);
-}
-
-//TODO SOSTITUIRE CON FUNZIONE DI RICERCA NODO
-//ricerca basata sul nome della ricetta
-Ricetta* searchRicetta(RecipeNode* root, const char* nome) {
-    // Caso base: l'albero è vuoto o il nome è trovato
-    if (root == NULL) {
-        return NULL;
-    }
-
-    // Confronta il nome cercato con il nome della ricetta nel nodo corrente
-    int cmp = strcmp(nome, root->ricetta->nome);
-
-    if (cmp == 0) {
-        // Nome trovato
-        return root->ricetta;
-    } else if (cmp < 0) {
-        // Nome cercato è minore, cerca nel sottoalbero sinistro
-        return searchRicetta(root->left, nome);
+    if (x->parent == T->nil) {
+        T->root = y;                    // se x era la radice, ora la radice è y
+    } else if (x == x->parent->left) {
+        x->parent->left = y;            // se x era il figlio sinistro, ora y è il figlio sinistro
     } else {
-        // Nome cercato è maggiore, cerca nel sottoalbero destro
-        return searchRicetta(root->right, nome);
+        x->parent->right = y;           // se x era il figlio destro, ora y è il figlio destro
+    }
+
+    y->left = x;                        // mette x a sinistra di y
+    x->parent = y;                      // aggiorna il padre di x a y
+}
+
+void rightRotateRicetta(Catalogo *T, RecipeNode *y) {
+    RecipeNode *x = y->left;            // x viene settato come il figlio sinistro di y
+    y->left = x->right;                 // il sottoalbero destro di x diventa quello sinistro di y
+
+    if (x->right != T->nil) {
+        x->right->parent = y;           // aggiorna il padre del sottoalbero destro di x
+    }
+
+    x->parent = y->parent;              // attacca il padre di y a x
+
+    if (y->parent == T->nil) {
+        T->root = x;                    // se y era la radice, ora la radice è x
+    } else if (y == y->parent->right) {
+        y->parent->right = x;           // se y era il figlio destro, ora x è il figlio destro
+    } else {
+        y->parent->left = x;            // se y era il figlio sinistro, ora x è il figlio sinistro
+    }
+
+    x->right = y;                       // mette y a destra di x
+    y->parent = x;                      // aggiorna il padre di y a x
+}
+
+void RicettaInsertFix(Catalogo *T, RecipeNode *z) {
+    while (z->parent->color == RED) {  // Continua finché il padre di z è rosso
+        RecipeNode *x = z->parent;
+
+        if (x == x->parent->left) {  // Se x è il figlio sinistro
+            RecipeNode *y = x->parent->right;  // y è lo zio (fratello del padre di z)
+
+            if (y->color == RED) {  // Caso 1: lo zio y è rosso
+                x->color = BLACK;   // Colora il padre di z in nero
+                y->color = BLACK;   // Colora lo zio y in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                z = x->parent;  // Sposta z al livello del nonno
+            } else {
+                if (z == x->right) {  // Caso 2: z è figlio destro
+                    z = x;
+                    leftRotateRicetta(T, z);  // Effettua una rotazione a sinistra
+                }
+
+                // Caso 3: z è figlio sinistro
+                x->color = BLACK;  // Colora il padre di z in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                rightRotateRicetta(T, x->parent);  // Effettua una rotazione a destra
+            }
+        } else {  // Simmetrico: se x è il figlio destro
+            RecipeNode *y = x->parent->left;  // y è lo zio (fratello del padre di z)
+
+            if (y->color == RED) {  // Caso 1: lo zio y è rosso
+                x->color = BLACK;   // Colora il padre di z in nero
+                y->color = BLACK;   // Colora lo zio y in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                z = x->parent;  // Sposta z al livello del nonno
+            } else {
+                if (z == x->left) {  // Caso 2: z è figlio sinistro
+                    z = x;
+                    rightRotateRicetta(T, z);  // Effettua una rotazione a destra
+                }
+
+                // Caso 3: z è figlio destro
+                x->color = BLACK;  // Colora il padre di z in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                leftRotateRicetta(T, x->parent);  // Effettua una rotazione a sinistra
+            }
+        }
+    }
+
+    T->root->color = BLACK;  // Assicurati che la radice sia sempre nera
+}
+
+void InserisciRicetta(Catalogo *T, RecipeNode *z) {
+    RecipeNode *y = T->nil;       // y è il padre del nodo considerato
+    RecipeNode *x = T->root;      // x è il nodo considerato (inizialmente la radice)
+
+    while (x != T->nil) {         // Trova la posizione corretta per il nuovo nodo z
+        y = x;
+        if (strcmp(z->key, x->key) < 0) // Confronta le chiavi per decidere la direzione
+            x = x->left;          // Se la chiave di z è minore, si muove a sinistra
+        else
+            x = x->right;         // Altrimenti, si muove a destra
+    }
+
+    z->parent = y;                // Collega il genitore al nuovo nodo z
+    if (y == T->nil) {
+        T->root = z;              // Se l'albero è vuoto, z diventa la radice
+    } else if (strcmp(z->key, y->key) < 0) {
+        y->left = z;              // Se la chiave di z è minore, z diventa il figlio sinistro
+    } else {
+        y->right = z;             // Altrimenti, z diventa il figlio destro
+    }
+
+    z->left = T->nil;             // Imposta i figli di z al nodo sentinella NIL
+    z->right = T->nil;
+    z->color = RED;               // Imposta il colore di z a rosso
+
+    RicettaInsertFix(T, z);        // Effettua il fixup per mantenere le proprietà dell'albero rosso-nero
+}
+
+// Funzione per aggiungere un nuovo ingrediente a un nodo ricetta
+void inserisciIngredienteRicetta(RecipeNode *nodo, const char *nomeIngrediente, const int quantita) {
+    // Alloca spazio per un nuovo array di ingredienti (uno in più)
+    nodo->ingredienti = realloc(nodo->ingredienti, (nodo->num_ingredienti + 1) * sizeof(Ingrediente));
+
+    // Aggiungi il nuovo ingrediente alla fine dell'array
+    nodo->ingredienti[nodo->num_ingredienti].ingrediente = strdup(nomeIngrediente);
+    nodo->ingredienti[nodo->num_ingredienti].quantita = quantita;
+
+    // Incrementa il numero di ingredienti
+    nodo->num_ingredienti++;
+}
+
+RecipeNode* cercaRicetta(RecipeNode *x, char *key) {
+    // Controllo se x è il nodo nil (foglia vuota) o se la chiave è stata trovata
+    if (x == catalogo.nil || strcmp(key, x->key) == 0) {
+        return x;
+    }
+
+    // Se la chiave cercata è minore della chiave del nodo corrente, continua a sinistra
+    if (strcmp(key, x->key) < 0) {
+        return cercaRicetta(x->left, key);
+    }
+    // Altrimenti, continua a destra
+    else {
+        return cercaRicetta(x->right, key);
     }
 }
+
+// Funzione che calcola il peso totale degli ingredienti nella ricetta
+int calcolaPeso(const RecipeNode *ricetta) {
+    int somma = 0;
+
+    for (int i = 0; i < ricetta->num_ingredienti; i++) {
+        somma += ricetta->ingredienti[i].quantita;
+    }
+    return somma;
+}
+
+//========================================RIMUOVI=RICETTA========================================================
+
+// Funzione di utilità per liberare la memoria di un nodo ricetta (facoltativo, ma importante)
+void liberaRecipeNode(RecipeNode *nodo) {
+    for (int i = 0; i < nodo->num_ingredienti; i++) {
+        free(nodo->ingredienti[i].ingrediente);
+    }
+    free(nodo->ingredienti);
+}
+
+RecipeNode* treeMinimum(RecipeNode *x) {
+    while (x->left != catalogo.nil) {
+        x = x->left;
+    }
+    return x;
+}
+
+RecipeNode* treeSuccessor(RecipeNode *x) {
+    RecipeNode *y;
+
+    if (x->right != catalogo.nil) {
+        return treeMinimum(x->right);
+    }
+    y = x->parent;
+    while (y != catalogo.nil && x == y->right) {
+        x = y;
+        y = y->parent;
+    }
+    return y;
+}
+
+void RicettaDeleteFix(Catalogo *T, RecipeNode *x) {
+    RecipeNode *w;
+
+    while (x != T->root && x->color == BLACK) {
+        if (x == x->parent->left) {  // Caso in cui x è figlio sinistro
+            w = x->parent->right;    // w è il fratello di x
+            if (w->color == RED) {   // Caso 1
+                w->color = BLACK;    // Caso 1
+                x->parent->color = RED; // Caso 1
+                leftRotateRicetta(T, x->parent); // Caso 1
+                w = x->parent->right; // Caso 1
+            }
+            if (w->left->color == BLACK && w->right->color == BLACK) { // Caso 2
+                w->color = RED;  // Caso 2
+                x = x->parent;   // Caso 2
+            } else {
+                if (w->right->color == BLACK) { // Caso 3
+                    w->left->color = BLACK; // Caso 3
+                    w->color = RED; // Caso 3
+                    rightRotateRicetta(T, w); // Caso 3
+                    w = x->parent->right; // Caso 3
+                }
+                w->color = x->parent->color; // Caso 4
+                x->parent->color = BLACK; // Caso 4
+                w->right->color = BLACK; // Caso 4
+                leftRotateRicetta(T, x->parent); // Caso 4
+                x = T->root; // Caso 4
+            }
+        } else {  // Caso in cui x è figlio destro
+            w = x->parent->left;    // w è il fratello di x
+            if (w->color == RED) {   // Caso 1
+                w->color = BLACK;    // Caso 1
+                x->parent->color = RED; // Caso 1
+                rightRotateRicetta(T, x->parent); // Caso 1
+                w = x->parent->left; // Caso 1
+            }
+            if (w->right->color == BLACK && w->left->color == BLACK) { // Caso 2
+                w->color = RED;  // Caso 2
+                x = x->parent;   // Caso 2
+            } else {
+                if (w->left->color == BLACK) { // Caso 3
+                    w->right->color = BLACK; // Caso 3
+                    w->color = RED; // Caso 3
+                    leftRotateRicetta(T, w); // Caso 3
+                    w = x->parent->left; // Caso 3
+                }
+                w->color = x->parent->color; // Caso 4
+                x->parent->color = BLACK; // Caso 4
+                w->left->color = BLACK; // Caso 4
+                rightRotateRicetta(T, x->parent); // Caso 4
+                x = T->root; // Caso 4
+            }
+        }
+    }
+    x->color = BLACK;
+}
+
+RecipeNode* RimuoviRicetta(RecipeNode *z) {
+    RecipeNode *y, *x;
+
+    if (z->left == catalogo.nil || z->right == catalogo.nil) {
+        y = z;
+    } else {
+        y = treeSuccessor(z);
+    }
+
+    if (y->left != catalogo.nil) {
+        x = y->left;
+    } else {
+        x = y->right;
+    }
+
+    x->parent = y->parent;
+
+    if (y->parent == catalogo.nil) {
+        catalogo.nil = x;
+    } else if (y == y->parent->left) {
+        y->parent->left = x;
+    } else {
+        y->parent->right = x;
+    }
+
+    if (y != z) {
+        // Libera la vecchia chiave e lista di ingredienti di z
+        free(z->key);  // Libera la vecchia chiave di z
+        liberaRecipeNode(z); // Libera la lista di ingredienti di z
+
+        // Copia i dati di y in z
+        z->key = strdup(y->key); // Copia della chiave (nome ricetta)
+        z->ingredienti = y->ingredienti; // Copia la lista di ingredienti
+        z->num_ingredienti = y->num_ingredienti; // Copia il numero di ingredienti
+        z->activeOrders = y->activeOrders; // Copia il numero di ordini attivi
+    }
+
+    if (y->color == BLACK) {
+        RicettaDeleteFix(&catalogo, x);
+    }
+
+    // Libera la chiave e la memoria di y prima di deallocarlo
+    liberaRecipeNode(y); // Libera la lista di ingredienti di y
+    free(y->key);       // Libera la chiave di y
+    free(y);             // Dealloca il nodo y
+
+    return y;
+}
+
+
+
 
 //==========================FUNZIONI=ALBERO=ORDINI===================================
 
-OrderNode* createOrderNode(Ordine ordine) {
-    OrderNode *newNode = (OrderNode *)malloc(sizeof(OrderNode));
-    if (newNode == NULL) {
-        // Gestione errore allocazione
-        return NULL;
-    }
-    newNode->ordine = ordine;
-    newNode->color = RED; // I nuovi nodi sono inizialmente rossi
-    newNode->left = newNode->right = newNode->parent = NULL;
-    return newNode;
+Ordine* createOrdine( char *nome, int ammount, RecipeNode *associatedRecipe) {
+    Ordine *newOrder = (Ordine *)malloc(sizeof(Ordine));
+
+    newOrder->nome = nome;
+    newOrder->ammount = ammount;
+    newOrder->arrivalTime = tempo;
+    newOrder->associatedRecipe = associatedRecipe;
+    newOrder->peso = calcolaPeso(associatedRecipe);
+
+    return newOrder;
 }
 
+OrderNode* createOrderNode(Ordine* ordine){
+    // Allocazione della memoria per il nuovo nodo della ricetta
+    OrderNode* orderNode = (OrderNode*)malloc(sizeof(OrderNode));
 
-void leftRotate(OrderNode **root, OrderNode *x) {
-    OrderNode *y = x->right;
-    x->right = y->left;
-    if (y->left != NULL) {
-        y->left->parent = x;
+    // Assegnazione della chiave (tempo arrivo)
+    orderNode->key = ordine->arrivalTime;  // Duplica la stringa per la chiave
+
+    // Assegnazione degli ingredienti e il numero di ingredienti
+    orderNode->ordinePronto = ordine;
+
+    // Inizializzazione degli attributi del nodo
+    orderNode->color = RED;  // Colore iniziale del nodo (RED)
+    orderNode->left = orderNode->right = orderNode->parent = ordinazioni.nil;  // Puntatori al nodo sentinella nil
+
+    return orderNode;
+}
+
+void inserisciOrdineSospeso(Ordine* ordine)
+{
+    // Alloca spazio per un nuovo array di ordini (uno in più)
+    ordinazioni.sospesi = realloc(ordinazioni.sospesi, (ordinazioni.num_ordinazioni_sospese+ 1) * sizeof(Ordine));
+
+    // Aggiungi il nuovo ordine alla fine dell'array
+    ordinazioni.sospesi[ordinazioni.num_ordinazioni_sospese] = *ordine;
+
+    // Incrementa il numero di ordini sospesi
+    ordinazioni.num_ordinazioni_sospese++;
+}
+
+void leftRotateOrdine(Ordinazioni *T, OrderNode *x) {
+    OrderNode *y = x->right;           // y viene settato come il figlio destro di x
+    x->right = y->left;                 // il sottoalbero sinistro di y diventa quello destro di x
+
+    if (y->left != T->nil) {
+        y->left->parent = x;            // aggiorna il padre del sottoalbero sinistro di y
     }
-    y->parent = x->parent;
-    if (x->parent == NULL) {
-        *root = y;
+
+    y->parent = x->parent;              // attacca il padre di x a y
+
+    if (x->parent == T->nil) {
+        T->root = y;                    // se x era la radice, ora la radice è y
     } else if (x == x->parent->left) {
-        x->parent->left = y;
+        x->parent->left = y;            // se x era il figlio sinistro, ora y è il figlio sinistro
     } else {
-        x->parent->right = y;
+        x->parent->right = y;           // se x era il figlio destro, ora y è il figlio destro
     }
-    y->left = x;
-    x->parent = y;
+
+    y->left = x;                        // mette x a sinistra di y
+    x->parent = y;                      // aggiorna il padre di x a y
 }
 
+void rightRotateOrdine(Ordinazioni *T, OrderNode *y) {
+    OrderNode *x = y->left;            // x viene settato come il figlio sinistro di y
+    y->left = x->right;                 // il sottoalbero destro di x diventa quello sinistro di y
 
-void rightRotate(OrderNode **root, OrderNode *y) {
-    OrderNode *x = y->left;
-    y->left = x->right;
-    if (x->right != NULL) {
-        x->right->parent = y;
+    if (x->right != T->nil) {
+        x->right->parent = y;           // aggiorna il padre del sottoalbero destro di x
     }
-    x->parent = y->parent;
-    if (y->parent == NULL) {
-        *root = x;
+
+    x->parent = y->parent;              // attacca il padre di y a x
+
+    if (y->parent == T->nil) {
+        T->root = x;                    // se y era la radice, ora la radice è x
     } else if (y == y->parent->right) {
-        y->parent->right = x;
+        y->parent->right = x;           // se y era il figlio destro, ora x è il figlio destro
     } else {
-        y->parent->left = x;
+        y->parent->left = x;            // se y era il figlio sinistro, ora x è il figlio sinistro
     }
-    x->right = y;
-    y->parent = x;
+
+    x->right = y;                       // mette y a destra di x
+    y->parent = x;                      // aggiorna il padre di y a x
 }
 
-void insertFixup(OrderNode **root, OrderNode *z) {
-    while (z->parent != NULL && z->parent->color == RED) {
-        if (z->parent == z->parent->parent->left) {
-            OrderNode *y = z->parent->parent->right;
-            if (y != NULL && y->color == RED) {
-                z->parent->color = BLACK;
-                y->color = BLACK;
-                z->parent->parent->color = RED;
-                z = z->parent->parent;
+void OrdinazioneInsertFix(Ordinazioni *T, OrderNode *z) {
+    while (z->parent->color == RED) {  // Continua finché il padre di z è rosso
+        OrderNode *x = z->parent;
+
+        if (x == x->parent->left) {  // Se x è il figlio sinistro
+            OrderNode *y = x->parent->right;  // y è lo zio (fratello del padre di z)
+
+            if (y->color == RED) {  // Caso 1: lo zio y è rosso
+                x->color = BLACK;   // Colora il padre di z in nero
+                y->color = BLACK;   // Colora lo zio y in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                z = x->parent;  // Sposta z al livello del nonno
             } else {
-                if (z == z->parent->right) {
-                    z = z->parent;
-                    leftRotate(root, z);
+                if (z == x->right) {  // Caso 2: z è figlio destro
+                    z = x;
+                    leftRotateOrdine(T, z);  // Effettua una rotazione a sinistra
                 }
-                z->parent->color = BLACK;
-                z->parent->parent->color = RED;
-                rightRotate(root, z->parent->parent);
+
+                // Caso 3: z è figlio sinistro
+                x->color = BLACK;  // Colora il padre di z in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                rightRotateOrdine(T, x->parent);  // Effettua una rotazione a destra
             }
-        } else {
-            OrderNode *y = z->parent->parent->left;
-            if (y != NULL && y->color == RED) {
-                z->parent->color = BLACK;
-                y->color = BLACK;
-                z->parent->parent->color = RED;
-                z = z->parent->parent;
+        } else {  // Simmetrico: se x è il figlio destro
+            OrderNode *y = x->parent->left;  // y è lo zio (fratello del padre di z)
+
+            if (y->color == RED) {  // Caso 1: lo zio y è rosso
+                x->color = BLACK;   // Colora il padre di z in nero
+                y->color = BLACK;   // Colora lo zio y in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                z = x->parent;  // Sposta z al livello del nonno
             } else {
-                if (z == z->parent->left) {
-                    z = z->parent;
-                    rightRotate(root, z);
+                if (z == x->left) {  // Caso 2: z è figlio sinistro
+                    z = x;
+                    rightRotateOrdine(T, z);  // Effettua una rotazione a destra
                 }
-                z->parent->color = BLACK;
-                z->parent->parent->color = RED;
-                leftRotate(root, z->parent->parent);
+
+                // Caso 3: z è figlio destro
+                x->color = BLACK;  // Colora il padre di z in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                leftRotateOrdine(T, x->parent);  // Effettua una rotazione a sinistra
             }
         }
     }
-    (*root)->color = BLACK;
+
+    T->root->color = BLACK;  // Assicurati che la radice sia sempre nera
 }
 
-void insertOrder(OrderNode **root, Ordine ordine) {
-    OrderNode *z = createOrderNode(ordine);
-    if (z == NULL) {
-        // Gestione errore creazione nodo
-        return;
-    }
+void InserisciOrdinePronto(Ordinazioni *T, OrderNode *z) {
+    OrderNode *y = T->nil;       // y è il padre del nodo considerato
+    OrderNode *x = T->root;      // x è il nodo considerato (inizialmente la radice)
 
-    OrderNode *y = NULL;
-    OrderNode *x = *root;
-
-    // Inserisci il nuovo nodo nell'albero rosso-nero
-    while (x != NULL) {
+    while (x != T->nil) {         // Trova la posizione corretta per il nuovo nodo z
         y = x;
-        if (z->ordine.arrivalTime < x->ordine.arrivalTime) {
-            x = x->left;
-        } else {
-            x = x->right;
-        }
+
+        // Confronta prima il peso, in caso di parità confronta il tempo di arrivo
+        if (z->ordinePronto->peso < x->ordinePronto->peso ||
+           (z->ordinePronto->peso == x->ordinePronto->peso && z->ordinePronto->arrivalTime < x->ordinePronto->arrivalTime)) {
+            x = x->left;          // Se z ha un peso minore o stesso peso ma arrivo precedente, va a sinistra
+           } else {
+               x = x->right;         // Altrimenti, va a destra
+           }
     }
 
-    z->parent = y;
-    if (y == NULL) {
-        *root = z; // L'albero era vuoto, z è la nuova radice
-    } else if (z->ordine.arrivalTime < y->ordine.arrivalTime) {
-        y->left = z;
-    } else {
-        y->right = z;
-    }
+    z->parent = y;                // Collega il genitore al nuovo nodo z
+    if (y == T->nil) {
+        T->root = z;              // Se l'albero è vuoto, z diventa la radice
+    } else if (z->ordinePronto->peso < y->ordinePronto->peso ||
+              (z->ordinePronto->peso == y->ordinePronto->peso && z->ordinePronto->arrivalTime < y->ordinePronto->arrivalTime)) {
+        y->left = z;              // Se z ha un peso minore o stesso peso ma arrivo precedente, diventa figlio sinistro
+              } else {
+                  y->right = z;             // Altrimenti, diventa figlio destro
+              }
 
-    // Azzera i puntatori dei figli e imposta il colore del nuovo nodo a rosso
-    z->left = z->right = NULL;
-    z->color = RED;
+    z->left = T->nil;             // Imposta i figli di z al nodo sentinella NIL
+    z->right = T->nil;
+    z->color = RED;               // Imposta il colore di z a rosso
 
-    // Ripristina le proprietà dell'albero rosso-nero dopo l'inserimento
-    insertFixup(root, z);
+    OrdinazioneInsertFix(T, z);   // Effettua il fixup per mantenere le proprietà dell'albero rosso-nero
 }
 
-
-// Funzione per trovare il nodo minimo dell'albero a partire da un dato nodo
-OrderNode* findMinimum(OrderNode* node) {
-    while (node->left != NULL) {
-        node = node->left;
+OrderNode* treeMinimumOrder(OrderNode *x) {
+    while (x->left != ordinazioni.nil) {
+        x = x->left;
     }
-    return node;
+    return x;
 }
 
-//Funzione rimozioni ordini spediti
-void fixDeletion(OrderNode **root, OrderNode *x) {
-    // Assicurati che x non sia NULL
-    if (x == NULL) {
-        return;
-    }
+OrderNode* treeSuccessorOrder(OrderNode *x) {
+    OrderNode *y;
 
-    while (x != *root && x->color == BLACK) {
-        if (x == x->parent->left) {
-            OrderNode *w = x->parent->right;
-            if (w != NULL && w->color == RED) {
-                w->color = BLACK;
-                x->parent->color = RED;
-                leftRotate(root, x->parent);
-                w = x->parent->right;
+    if (x->right != ordinazioni.nil) {
+        return treeMinimumOrder(x->right);
+    }
+    y = x->parent;
+    while (y != ordinazioni.nil && x == y->right) {
+        x = y;
+        y = y->parent;
+    }
+    return y;
+}
+
+void OrdineDeleteFix(Ordinazioni *T, OrderNode *x) {
+     OrderNode *w;
+
+    while (x != T->root && x->color == BLACK) {
+        if (x == x->parent->left) {  // Caso in cui x è figlio sinistro
+            w = x->parent->right;    // w è il fratello di x
+            if (w->color == RED) {   // Caso 1
+                w->color = BLACK;    // Caso 1
+                x->parent->color = RED; // Caso 1
+                leftRotateOrdine(T, x->parent); // Caso 1
+                w = x->parent->right; // Caso 1
             }
-            if ((w == NULL || (w->left == NULL || w->left->color == BLACK)) &&
-                (w == NULL || (w->right == NULL || w->right->color == BLACK))) {
-                if (w != NULL) {
-                    w->color = RED;
-                }
-                x = x->parent;
+            if (w->left->color == BLACK && w->right->color == BLACK) { // Caso 2
+                w->color = RED;  // Caso 2
+                x = x->parent;   // Caso 2
             } else {
-                if (w != NULL && (w->right == NULL || w->right->color == BLACK)) {
-                    if (w->left != NULL) {
-                        w->left->color = BLACK;
-                    }
-                    w->color = RED;
-                    rightRotate(root, w);
-                    w = x->parent->right;
+                if (w->right->color == BLACK) { // Caso 3
+                    w->left->color = BLACK; // Caso 3
+                    w->color = RED; // Caso 3
+                    rightRotateOrdine(T, w); // Caso 3
+                    w = x->parent->right; // Caso 3
                 }
-                if (w != NULL) {
-                    w->color = x->parent->color;
-                }
-                x->parent->color = BLACK;
-                if (w != NULL && w->right != NULL) {
-                    w->right->color = BLACK;
-                }
-                leftRotate(root, x->parent);
-                x = *root;
+                w->color = x->parent->color; // Caso 4
+                x->parent->color = BLACK; // Caso 4
+                w->right->color = BLACK; // Caso 4
+                leftRotateOrdine(T, x->parent); // Caso 4
+                x = T->root; // Caso 4
             }
-        } else {
-            OrderNode *w = x->parent->left;
-            if (w != NULL && w->color == RED) {
-                w->color = BLACK;
-                x->parent->color = RED;
-                rightRotate(root, x->parent);
-                w = x->parent->left;
+        } else {  // Caso in cui x è figlio destro
+            w = x->parent->left;    // w è il fratello di x
+            if (w->color == RED) {   // Caso 1
+                w->color = BLACK;    // Caso 1
+                x->parent->color = RED; // Caso 1
+                rightRotateOrdine(T, x->parent); // Caso 1
+                w = x->parent->left; // Caso 1
             }
-            if ((w == NULL || (w->right == NULL || w->right->color == BLACK)) &&
-                (w == NULL || (w->left == NULL || w->left->color == BLACK))) {
-                if (w != NULL) {
-                    w->color = RED;
-                }
-                x = x->parent;
+            if (w->right->color == BLACK && w->left->color == BLACK) { // Caso 2
+                w->color = RED;  // Caso 2
+                x = x->parent;   // Caso 2
             } else {
-                if (w != NULL && (w->left == NULL || w->left->color == BLACK)) {
-                    if (w->right != NULL) {
-                        w->right->color = BLACK;
-                    }
-                    w->color = RED;
-                    leftRotate(root, w);
-                    w = x->parent->left;
+                if (w->left->color == BLACK) { // Caso 3
+                    w->right->color = BLACK; // Caso 3
+                    w->color = RED; // Caso 3
+                    leftRotateOrdine(T, w); // Caso 3
+                    w = x->parent->left; // Caso 3
                 }
-                if (w != NULL) {
-                    w->color = x->parent->color;
-                }
-                x->parent->color = BLACK;
-                if (w != NULL && w->left != NULL) {
-                    w->left->color = BLACK;
-                }
-                rightRotate(root, x->parent);
-                x = *root;
+                w->color = x->parent->color; // Caso 4
+                x->parent->color = BLACK; // Caso 4
+                w->left->color = BLACK; // Caso 4
+                rightRotateOrdine(T, x->parent); // Caso 4
+                x = T->root; // Caso 4
             }
         }
     }
-    if (x != NULL) {
-        x->color = BLACK;
-    }
+    x->color = BLACK;
 }
 
+void removeLoadedOrder(Ordinazioni *T, OrderNode *z) {
+    OrderNode *y, *x;
 
-
-// Funzione per rimuovere un nodo dall'albero rosso-nero
-void rbDelete(OrderNode **root, OrderNode *z) {
-    OrderNode *y = z;
-    OrderNode *x;
-    Color originalColor = y->color;
-
-    if (z->left == NULL) {
-        x = z->right;
-        if (x != NULL) {
-            x->parent = z->parent;
-        }
-        if (z->parent == NULL) {
-            *root = x;
-        } else if (z == z->parent->left) {
-            z->parent->left = x;
-        } else {
-            z->parent->right = x;
-        }
-    } else if (z->right == NULL) {
-        x = z->left;
-        if (x != NULL) {
-            x->parent = z->parent;
-        }
-        if (z->parent == NULL) {
-            *root = x;
-        } else if (z == z->parent->left) {
-            z->parent->left = x;
-        } else {
-            z->parent->right = x;
-        }
+    if (z->left == T->nil || z->right == T->nil) {
+        y = z;  // Il nodo da eliminare è z se ha un figlio NIL
     } else {
-        y = findMinimum(z->right);
-        originalColor = y->color;
+        y = treeSuccessorOrder(z);  // Trova il successore
+    }
+
+    if (y->left != T->nil) {
+        x = y->left;
+    } else {
         x = y->right;
-        if (y->parent == z) {
-            if (x != NULL) {
-                x->parent = y;
-            }
-        } else {
-            if (x != NULL) {
-                x->parent = y->parent;
-            }
-            y->parent->left = x;
-            y->right = z->right;
-            z->right->parent = y;
+    }
+
+    x->parent = y->parent;
+
+    if (y->parent == T->nil) {
+        T->root = x;  // Se y era la radice, x diventa la nuova radice
+    } else if (y == y->parent->left) {
+        y->parent->left = x;
+    } else {
+        y->parent->right = x;
+    }
+
+    if (y != z) {
+        // Libera la memoria dell'ordine associato a z
+        if (z->ordinePronto) {
+            free(z->ordinePronto->nome);  // Libera il nome dell'ordine
+            free(z->ordinePronto);  // Libera la struttura Ordine
         }
-        y->parent = z->parent;
-        if (z->parent == NULL) {
-            *root = y;
-        } else if (z == z->parent->left) {
-            z->parent->left = y;
-        } else {
-            z->parent->right = y;
-        }
-        y->left = z->left;
-        z->left->parent = y;
-        y->color = z->color;
+
+        // Copia i dati di y in z
+        z->ordinePronto = y->ordinePronto;
+        z->key = y->key;
     }
 
-    free(z);
-
-    if (originalColor == BLACK) {
-        fixDeletion(root, x);
+    if (y->color == BLACK) {
+        OrdineDeleteFix(T, x);
     }
+
+    // Libera la memoria del nodo y
+    free(y);  // Dealloca il nodo y
 }
 
-// Funzione ricorsiva per attraversare l'albero e rimuovere i nodi con status = 4
-void removeOrdersWithStatus4(OrderNode **root, OrderNode *node) {
-    if (node == NULL) {
-        return;
-    }
 
-    removeOrdersWithStatus4(root, node->left);
-    removeOrdersWithStatus4(root, node->right);
+//TODO qui
 
-    if (node->ordine.status == 4) {
-        rbDelete(root, node);
-    }
-}
-
-// Funzione principale per avviare la rimozione
-void rimuoviOrdini(Ordinazioni *ordinazioni) {
-    removeOrdersWithStatus4(&(ordinazioni->ordinazioni), ordinazioni->ordinazioni);
-}
 
 //ricalcola i puntatori delgli ordini alle ricette se una ricetta e stata eliminata
 // Funzione per aggiornare la ricetta associata ad un singolo nodo
@@ -747,326 +811,198 @@ void updateOrderRecipeIndex(Ordinazioni *ordinazioni, RecipeNode *rootRicette) {
     aggiornaRicettaPerNodo(ordinazioni->ordinazioni, rootRicette);
 }
 
+//===================================MAGAZZINO=================================
 
-//==========================NUOVA=RICETTA=========================
-void insertRicetta(RecipeNode **root, Ricetta *ricetta) {
-    RecipeNode *pt = createRecipeNode(ricetta);
+ResourceNode* createResourceNode(const char* key) {
+    // Allocazione della memoria per il nuovo nodo della ricetta
+    ResourceNode* resourcenode = (ResourceNode*)malloc(sizeof(ResourceNode));
 
-    // Esegui l'inserimento nel BST
-    RecipeNode *y = NULL;
-    RecipeNode *x = *root;
+    // Assegnazione della chiave (nome della ricetta)
+    resourcenode->key = strdup(key);  // Duplica la stringa per la chiave
 
-    while (x != NULL) {
-        y = x;
-        if (strcmp(pt->ricetta->nome, x->ricetta->nome) < 0)
-            x = x->left;
-        else
-            x = x->right;
-    }
+    // Assegnazione degli ingredienti e il numero di ingredienti
+    resourcenode->lotti = NULL;
+    resourcenode->num_lotti = 0;
+    resourcenode->maxGrammi = 0;
 
-    pt->parent = y;
+    // Inizializzazione degli attributi del nodo
+    resourcenode->color = RED;  // Colore iniziale del nodo (RED)
+    resourcenode->left = resourcenode->right = resourcenode->parent = magazzino.nil;  // Puntatori al nodo sentinella nil
 
-    if (y == NULL) {
-        // L'albero era vuoto
-        *root = pt;
-    } else if (strcmp(pt->ricetta->nome, y->ricetta->nome) < 0) {
-        y->left = pt;
-    } else {
-        y->right = pt;
-    }
-
-    // Correggi le violazioni dell'albero RED-BLACK
-    fixViolation(&catalogo, pt);
-    catalogo.num_ricette++;
+    return resourcenode;
 }
 
-//========================RIMUOVI=RICETTA============================
-
-// Funzione ausiliaria per sostituire un sottoalbero con un altro
-void rbTransplant(Catalogo *catalogo, RecipeNode *u, RecipeNode *v) {
-    if (u->parent == NULL) {
-        catalogo->root = v;
-    } else if (u == u->parent->left) {
-        u->parent->left = v;
-    } else {
-        u->parent->right = v;
+ResourceNode* cercaIngredienteMagazzino(ResourceNode *x, char *key) {
+    // Controllo se x è il nodo nil (foglia vuota) o se la chiave è stata trovata
+    if (x == magazzino.nil || strcmp(key, x->key) == 0) {
+        return x;
     }
-    if (v != NULL) {
-        v->parent = u->parent;
+
+    // Se la chiave cercata è minore della chiave del nodo corrente, continua a sinistra
+    if (strcmp(key, x->key) < 0) {
+        return cercaIngredienteMagazzino(x->left, key);
+    }
+    // Altrimenti, continua a destra
+    else {
+        return cercaIngredienteMagazzino(x->right, key);
     }
 }
 
-// Trova il nodo con il valore minimo a partire da un dato nodo
-RecipeNode *minimum(RecipeNode *node) {
-    while (node->left != NULL) {
-        node = node->left;
-    }
-    return node;
-}
-
-// Funzione per il bilanciamento dell'albero dopo la rimozione
-void rbDeleteFixup(Catalogo *catalogo, RecipeNode *x) {
-    while (x != catalogo->root && (x == NULL || x->color == BLACK)) {
-        if (x != NULL && x->parent != NULL) {
-            if (x == x->parent->left) {
-                RecipeNode *w = x->parent->right;
-                if (w != NULL && w->color == RED) {
-                    w->color = BLACK;
-                    x->parent->color = RED;
-                    rotateLeft(catalogo, x->parent);
-                    w = x->parent->right;
-                }
-                if ((w == NULL || (w->left == NULL || w->left->color == BLACK)) &&
-                    (w == NULL || (w->right == NULL || w->right->color == BLACK))) {
-                    if (w != NULL) {
-                        w->color = RED;
-                    }
-                    x = x->parent;
-                } else {
-                    if (w->right == NULL || w->right->color == BLACK) {
-                        if (w->left != NULL) {
-                            w->left->color = BLACK;
-                        }
-                        w->color = RED;
-                        rotateRight(catalogo, w);
-                        w = x->parent->right;
-                    }
-                    if (w != NULL) {
-                        w->color = x->parent->color;
-                        x->parent->color = BLACK;
-                        if (w->right != NULL) {
-                            w->right->color = BLACK;
-                        }
-                        rotateLeft(catalogo, x->parent);
-                    }
-                    x = catalogo->root;
-                }
-            } else { // Speculare per il caso x == x->parent->right
-                RecipeNode *w = x->parent->left;
-                if (w != NULL && w->color == RED) {
-                    w->color = BLACK;
-                    x->parent->color = RED;
-                    rotateRight(catalogo, x->parent);
-                    w = x->parent->left;
-                }
-                if ((w == NULL || (w->right == NULL || w->right->color == BLACK)) &&
-                    (w == NULL || (w->left == NULL || w->left->color == BLACK))) {
-                    if (w != NULL) {
-                        w->color = RED;
-                    }
-                    x = x->parent;
-                } else {
-                    if (w->left == NULL || w->left->color == BLACK) {
-                        if (w->right != NULL) {
-                            w->right->color = BLACK;
-                        }
-                        w->color = RED;
-                        rotateLeft(catalogo, w);
-                        w = x->parent->left;
-                    }
-                    if (w != NULL) {
-                        w->color = x->parent->color;
-                        x->parent->color = BLACK;
-                        if (w->left != NULL) {
-                            w->left->color = BLACK;
-                        }
-                        rotateRight(catalogo, x->parent);
-                    }
-                    x = catalogo->root;
-                }
-            }
-        } else {
-            break; // Evita il segmentation fault uscendo dal ciclo se x o x->parent è NULL
+void inserisciLottoMagazzino(ResourceNode *nodo, int quantita, int scadenza) {
+    // Cerca se esiste già un lotto con la stessa data di scadenza
+    for (int i = 0; i < nodo->num_lotti; i++) {
+        if (nodo->lotti[i].scadenza == scadenza) {
+            // Se esiste, somma la quantità al lotto esistente
+            nodo->lotti[i].ammount += quantita;
+            nodo->maxGrammi += quantita;
+            return;
         }
     }
-    if (x != NULL) {
-        x->color = BLACK;
+
+    // Se non esiste un lotto con la stessa data di scadenza,
+    // alloca spazio per un nuovo array di lotti (uno in più)
+    nodo->lotti = realloc(nodo->lotti, (nodo->num_lotti + 1) * sizeof(Lotto));
+
+    int i;
+    for (i = nodo->num_lotti; i > 0 && nodo->lotti[i-1].scadenza > scadenza; i--) {
+        nodo->lotti[i] = nodo->lotti[i-1]; // Sposta i lotti esistenti per fare spazio
     }
+
+    // Inserisci il nuovo lotto nella posizione corretta
+    nodo->lotti[i].ammount = quantita;
+    nodo->lotti[i].scadenza = scadenza;
+
+    // Incrementa il numero di lotti
+    nodo->num_lotti++;
+
+    // Aggiorna il totale degli ingredienti
+    nodo->maxGrammi += quantita;
 }
 
+void leftRotateResource(Magazzino *T, ResourceNode *x) {
+    ResourceNode *y = x->right;           // y viene settato come il figlio destro di x
+    x->right = y->left;                 // il sottoalbero sinistro di y diventa quello destro di x
 
-
-// Funzione di ricerca del nodo della ricetta
-RecipeNode *searchRecipeNode(RecipeNode *root, const char *nome_ricetta) {
-    if (root == NULL || strcmp(nome_ricetta, root->ricetta->nome) == 0) {
-        return root;
+    if (y->left != T->nil) {
+        y->left->parent = x;            // aggiorna il padre del sottoalbero sinistro di y
     }
 
-    if (strcmp(nome_ricetta, root->ricetta->nome) < 0) {
-        return searchRecipeNode(root->left, nome_ricetta);
-    } else {
-        return searchRecipeNode(root->right, nome_ricetta);
-    }
-}
+    y->parent = x->parent;              // attacca il padre di x a y
 
-void rimuoviRicetta(const Ricetta *recipeToKill) {
-    if (recipeToKill == NULL) {
-        return;
-    }
-
-    // Trova il nodo della ricetta nel catalogo
-    RecipeNode *z = searchRecipeNode(catalogo.root, recipeToKill->nome);
-
-    if (z == NULL) {
-        return; // La ricetta non è presente
-    }
-
-    RecipeNode *y = z;
-    RecipeNode *x;
-    Color yOriginalColor = y->color;
-
-    if (z->left == NULL) {
-        x = z->right;
-        rbTransplant(&catalogo, z, z->right);
-    } else if (z->right == NULL) {
-        x = z->left;
-        rbTransplant(&catalogo, z, z->left);
-    } else {
-        y = minimum(z->right);
-        yOriginalColor = y->color;
-        x = y->right;
-
-        if (y->parent == z) {
-            if (x != NULL) {
-                x->parent = y;
-            }
-        } else {
-            rbTransplant(&catalogo, y, y->right);
-            y->right = z->right;
-            y->right->parent = y;
-        }
-
-        rbTransplant(&catalogo, z, y);
-        y->left = z->left;
-        y->left->parent = y;
-        y->color = z->color;
-    }
-
-    free(z->ricetta->nome);
-    free(z->ricetta);
-    free(z);
-
-    if (yOriginalColor == BLACK) {
-        rbDeleteFixup(&catalogo, x);
-    }
-
-    catalogo.num_ricette--;
-}
-//=============================RIFORNIMENTO=MAGAZZINO=================================
-
-void ruotaSinistra(ResourceNode **root, ResourceNode *x) {
-    ResourceNode *y = x->right;
-    x->right = y->left;
-    if (y->left != NULL) {
-        y->left->parent = x;
-    }
-    y->parent = x->parent;
-    if (x->parent == NULL) {
-        *root = y;
+    if (x->parent == T->nil) {
+        T->root = y;                    // se x era la radice, ora la radice è y
     } else if (x == x->parent->left) {
-        x->parent->left = y;
+        x->parent->left = y;            // se x era il figlio sinistro, ora y è il figlio sinistro
     } else {
-        x->parent->right = y;
+        x->parent->right = y;           // se x era il figlio destro, ora y è il figlio destro
     }
-    y->left = x;
-    x->parent = y;
+
+    y->left = x;                        // mette x a sinistra di y
+    x->parent = y;                      // aggiorna il padre di x a y
 }
 
-void ruotaDestra(ResourceNode **root, ResourceNode *y) {
-    ResourceNode *x = y->left;
-    y->left = x->right;
-    if (x->right != NULL) {
-        x->right->parent = y;
+void rightRotateResource(Magazzino *T, ResourceNode *y) {
+    ResourceNode *x = y->left;            // x viene settato come il figlio sinistro di y
+    y->left = x->right;                 // il sottoalbero destro di x diventa quello sinistro di y
+
+    if (x->right != T->nil) {
+        x->right->parent = y;           // aggiorna il padre del sottoalbero destro di x
     }
-    x->parent = y->parent;
-    if (y->parent == NULL) {
-        *root = x;
+
+    x->parent = y->parent;              // attacca il padre di y a x
+
+    if (y->parent == T->nil) {
+        T->root = x;                    // se y era la radice, ora la radice è x
     } else if (y == y->parent->right) {
-        y->parent->right = x;
+        y->parent->right = x;           // se y era il figlio destro, ora x è il figlio destro
     } else {
-        y->parent->left = x;
+        y->parent->left = x;            // se y era il figlio sinistro, ora x è il figlio sinistro
     }
-    x->right = y;
-    y->parent = x;
+
+    x->right = y;                       // mette y a destra di x
+    y->parent = x;                      // aggiorna il padre di y a x
 }
 
-void correggiViolazioni(ResourceNode **root, ResourceNode *z) {
-    while (z != *root && z->parent->color == RED) {
-        if (z->parent == z->parent->parent->left) {
-            ResourceNode *y = z->parent->parent->right; // Zio
-            if (y != NULL && y->color == RED) {
-                // Caso 1: lo zio è rosso
-                z->parent->color = BLACK;
-                y->color = BLACK;
-                z->parent->parent->color = RED;
-                z = z->parent->parent;
+void ResourceInsertFix(Magazzino *T, ResourceNode *z) {
+    while (z->parent->color == RED) {  // Continua finché il padre di z è rosso
+        ResourceNode *x = z->parent;
+
+        if (x == x->parent->left) {  // Se x è il figlio sinistro
+            ResourceNode *y = x->parent->right;  // y è lo zio (fratello del padre di z)
+
+            if (y->color == RED) {  // Caso 1: lo zio y è rosso
+                x->color = BLACK;   // Colora il padre di z in nero
+                y->color = BLACK;   // Colora lo zio y in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                z = x->parent;  // Sposta z al livello del nonno
             } else {
-                if (z == z->parent->right) {
-                    // Caso 2: lo zio è nero e z è un figlio destro
-                    z = z->parent;
-                    ruotaSinistra(root, z);
+                if (z == x->right) {  // Caso 2: z è figlio destro
+                    z = x;
+                    leftRotateResource(T, z);  // Effettua una rotazione a sinistra
                 }
-                // Caso 3: lo zio è nero e z è un figlio sinistro
-                z->parent->color = BLACK;
-                z->parent->parent->color = RED;
-                ruotaDestra(root, z->parent->parent);
+
+                // Caso 3: z è figlio sinistro
+                x->color = BLACK;  // Colora il padre di z in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                rightRotateResource(T, x->parent);  // Effettua una rotazione a destra
             }
-        } else {
-            // Caso simmetrico
-            ResourceNode *y = z->parent->parent->left;
-            if (y != NULL && y->color == RED) {
-                z->parent->color = BLACK;
-                y->color = BLACK;
-                z->parent->parent->color = RED;
-                z = z->parent->parent;
+        } else {  // Simmetrico: se x è il figlio destro
+            ResourceNode *y = x->parent->left;  // y è lo zio (fratello del padre di z)
+
+            if (y->color == RED) {  // Caso 1: lo zio y è rosso
+                x->color = BLACK;   // Colora il padre di z in nero
+                y->color = BLACK;   // Colora lo zio y in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                z = x->parent;  // Sposta z al livello del nonno
             } else {
-                if (z == z->parent->left) {
-                    z = z->parent;
-                    ruotaDestra(root, z);
+                if (z == x->left) {  // Caso 2: z è figlio sinistro
+                    z = x;
+                    rightRotateResource(T, z);  // Effettua una rotazione a destra
                 }
-                z->parent->color = BLACK;
-                z->parent->parent->color = RED;
-                ruotaSinistra(root, z->parent->parent);
+
+                // Caso 3: z è figlio destro
+                x->color = BLACK;  // Colora il padre di z in nero
+                x->parent->color = RED;  // Colora il nonno in rosso
+                leftRotateResource(T, x->parent);  // Effettua una rotazione a sinistra
             }
         }
     }
-    (*root)->color = BLACK;
+
+    T->root->color = BLACK;  // Assicurati che la radice sia sempre nera
 }
 
-ResourceNode* creaNuovoIngrediente(char *nome_ingrediente, int ammount, int scadenza) {
-    ResourceNode *nuovoIngrediente = (ResourceNode*)malloc(sizeof(ResourceNode));
-    strcpy(nuovoIngrediente->nome, nome_ingrediente);
-    nuovoIngrediente->num_lotti = 1;
-    nuovoIngrediente->maxGrammi = ammount;
-    nuovoIngrediente->color = RED;  // Nuovo nodo sempre rosso
-    nuovoIngrediente->left = nuovoIngrediente->right = nuovoIngrediente->parent = NULL;
+void aggiungiIngredienteMagazzino(Magazzino *T, ResourceNode *z)
+{
+    ResourceNode *y = T->nil;       // y è il padre del nodo considerato
+    ResourceNode *x = T->root;      // x è il nodo considerato (inizialmente la radice)
 
-    Lotto *new_lotto = (Lotto*)malloc(sizeof(Lotto));
-    new_lotto->ammount = ammount;
-    new_lotto->scadenza = scadenza;
-    new_lotto->color = BLACK;  // Consideriamo i lotti come nodi foglia neri
-    new_lotto->left = new_lotto->right = new_lotto->parent = NULL;
-    nuovoIngrediente->lotti = new_lotto;
-
-    return nuovoIngrediente;
-}
-
-// Funzione di ricerca per trovare un ingrediente specifico nel magazzino
-ResourceNode* searchIngredientMagazzino(ResourceNode *nodo, const char *nome) {
-    if (nodo == NULL) {
-        return NULL;  // Ingrediente non trovato
+    while (x != T->nil) {         // Trova la posizione corretta per il nuovo nodo z
+        y = x;
+        if (strcmp(z->key, x->key) < 0) // Confronta le chiavi per decidere la direzione
+            x = x->left;          // Se la chiave di z è minore, si muove a sinistra
+        else
+            x = x->right;         // Altrimenti, si muove a destra
     }
 
-    const int cmp = strcmp(nome, nodo->nome);
-
-    if (cmp == 0) {
-        return nodo;  // Ingrediente trovato
-    } else if (cmp < 0) {
-        return searchIngredientMagazzino(nodo->left, nome);  // Cerca a sinistra
+    z->parent = y;                // Collega il genitore al nuovo nodo z
+    if (y == T->nil) {
+        T->root = z;              // Se l'albero è vuoto, z diventa la radice
+    } else if (strcmp(z->key, y->key) < 0) {
+        y->left = z;              // Se la chiave di z è minore, z diventa il figlio sinistro
     } else {
-        return searchIngredientMagazzino(nodo->right, nome); // Cerca a destra
+        y->right = z;             // Altrimenti, z diventa il figlio destro
     }
+
+    z->left = T->nil;             // Imposta i figli di z al nodo sentinella NIL
+    z->right = T->nil;
+    z->color = RED;               // Imposta il colore di z a rosso
+
+    T->num_risorse++;
+
+    ResourceInsertFix(T, z);        // Effettua il fixup per mantenere le proprietà dell'albero rosso-nero
 }
+
+//TODO QUI
 
 void riparaAlberoIngredienteRM(ResourceNode **root, ResourceNode *x) {
     // Controlla se x è NULL all'inizio del ciclo
@@ -1162,199 +1098,6 @@ void riparaAlberoIngredienteRM(ResourceNode **root, ResourceNode *x) {
 }
 
 
-
-
-
-void ruotaSinistraLotto(Lotto **root, Lotto *x) {
-    Lotto *y = x->right;
-    x->right = y->left;
-    if (y->left != NULL) {
-        y->left->parent = x;
-    }
-    y->parent = x->parent;
-    if (x->parent == NULL) {
-        *root = y;
-    } else if (x == x->parent->left) {
-        x->parent->left = y;
-    } else {
-        x->parent->right = y;
-    }
-    y->left = x;
-    x->parent = y;
-}
-
-void ruotaDestraLotto(Lotto **root, Lotto *x) {
-    Lotto *y = x->left;
-    x->left = y->right;
-    if (y->right != NULL) {
-        y->right->parent = x;
-    }
-    y->parent = x->parent;
-    if (x->parent == NULL) {
-        *root = y;
-    } else if (x == x->parent->right) {
-        x->parent->right = y;
-    } else {
-        x->parent->left = y;
-    }
-    y->right = x;
-    x->parent = y;
-}
-
-void correggiViolazioniLotto(Lotto **root, Lotto *z) {
-    while (z != NULL && z != *root && z->parent->color == RED) {
-        if (z->parent == z->parent->parent->left) {
-            Lotto *y = z->parent->parent->right;
-            if (y != NULL && y->color == RED) {
-                z->parent->color = BLACK;
-                y->color = BLACK;
-                z->parent->parent->color = RED;
-                z = z->parent->parent;
-            } else {
-                if (z == z->parent->right) {
-                    z = z->parent;
-                    ruotaSinistraLotto(root, z);
-                }
-                z->parent->color = BLACK;
-                z->parent->parent->color = RED;
-                ruotaDestraLotto(root, z->parent->parent);
-            }
-        } else {
-            Lotto *y = z->parent->parent->left;
-            if (y != NULL && y->color == RED) {
-                z->parent->color = BLACK;
-                y->color = BLACK;
-                z->parent->parent->color = RED;
-                z = z->parent->parent;
-            } else {
-                if (z == z->parent->left) {
-                    z = z->parent;
-                    ruotaDestraLotto(root, z);
-                }
-                z->parent->color = BLACK;
-                z->parent->parent->color = RED;
-                ruotaSinistraLotto(root, z->parent->parent);
-            }
-        }
-    }
-    if (*root != NULL) {
-        (*root)->color = BLACK;
-    }
-}
-
-void aggiungiIngredienteMagazzino(Magazzino *magazzino, char *nome_ingrediente, const int ammount, const int scadenza) {
-    ResourceNode *y = NULL;
-    ResourceNode *x = magazzino->ingredienti;
-
-    // Cerca l'ingrediente nell'albero
-    while (x != NULL) {
-        y = x;
-        int cmp = strcmp(nome_ingrediente, x->nome);
-
-        if (cmp == 0) {
-            // Ingrediente trovato, aggiungi lotto
-            Lotto *new_lotto = (Lotto*)malloc(sizeof(Lotto));
-            new_lotto->ammount = ammount;
-            new_lotto->scadenza = scadenza;
-            new_lotto->color = RED;  // Nuovo lotto inserito come rosso
-            new_lotto->left = new_lotto->right = new_lotto->parent = NULL;
-
-            // Inserisci il lotto nell'albero dei lotti (rispettando l'ordine di scadenza)
-            Lotto *lotto_current = x->lotti;
-            Lotto *lotto_parent = NULL;
-
-            while (lotto_current != NULL) {
-                lotto_parent = lotto_current;
-
-                if (scadenza < lotto_current->scadenza) {
-                    lotto_current = lotto_current->left;
-                } else {
-                    lotto_current = lotto_current->right;
-                }
-            }
-
-            new_lotto->parent = lotto_parent;
-            if (lotto_parent == NULL) {
-                x->lotti = new_lotto;
-            } else if (scadenza < lotto_parent->scadenza) {
-                lotto_parent->left = new_lotto;
-            } else {
-                lotto_parent->right = new_lotto;
-            }
-
-            // Correggi eventuali violazioni dell'albero rosso-nero
-            correggiViolazioniLotto(&(x->lotti), new_lotto);
-            x->num_lotti++;
-            x->maxGrammi += ammount;
-            return;
-        } else if (cmp < 0) {
-            x = x->left;
-        } else {
-            x = x->right;
-        }
-    }
-
-    // Ingrediente non trovato, creiamo un nuovo nodo
-    ResourceNode *z = creaNuovoIngrediente(nome_ingrediente, ammount, scadenza);
-    z->parent = y;
-
-    if (y == NULL) {
-        magazzino->ingredienti = z;
-    } else if (strcmp(z->nome, y->nome) < 0) {
-        y->left = z;
-    } else {
-        y->right = z;
-    }
-
-    // Correggi eventuali violazioni dell'albero rosso-nero per l'ingrediente
-    correggiViolazioni(&(magazzino->ingredienti), z);
-    magazzino->num_ingredienti++;
-}
-
-
-void riparaAlberoMagazzinoRM(Lotto **root, Lotto *x) {
-    while (x != NULL && x != *root && x->parent->color == RED) {
-        if (x->parent == x->parent->parent->left) {
-            Lotto *y = x->parent->parent->right;
-            if (y != NULL && y->color == RED) {
-                x->parent->color = BLACK;
-                y->color = BLACK;
-                x->parent->parent->color = RED;
-                x = x->parent->parent;
-            } else {
-                if (x == x->parent->right) {
-                    x = x->parent;
-                    ruotaSinistraLotto(root, x);
-                }
-                x->parent->color = BLACK;
-                x->parent->parent->color = RED;
-                ruotaDestraLotto(root, x->parent->parent);
-            }
-        } else {
-            Lotto *y = x->parent->parent->left;
-            if (y != NULL && y->color == RED) {
-                x->parent->color = BLACK;
-                y->color = BLACK;
-                x->parent->parent->color = RED;
-                x = x->parent->parent;
-            } else {
-                if (x == x->parent->left) {
-                    x = x->parent;
-                    ruotaDestraLotto(root, x);
-                }
-                x->parent->color = BLACK;
-                x->parent->parent->color = RED;
-                ruotaSinistraLotto(root, x->parent->parent);
-            }
-        }
-    }
-    if (*root != NULL) {
-        (*root)->color = BLACK;
-    }
-}
-
-
-
 void trapiantaNodo(ResourceNode **root, ResourceNode *u, ResourceNode *v) {
     if (u->parent == NULL) {
         *root = v;
@@ -1413,112 +1156,7 @@ void rimuoviNodo(ResourceNode **root, ResourceNode *z) {
     free(z);
 }
 
-
-
-Lotto *trovaMinimoLotto(Lotto *node) {
-    while (node->left != NULL) {
-        node = node->left;
-    }
-    return node;
-}
-
-void trapiantaLotto(Lotto **root, Lotto *u, Lotto *v) {
-    if (u->parent == NULL) {
-        *root = v;
-    } else if (u == u->parent->left) {
-        u->parent->left = v;
-    } else {
-        u->parent->right = v;
-    }
-    if (v != NULL) {
-        v->parent = u->parent;
-    }
-}
-
-void rimuoviLotto(Lotto **root, Lotto *z, ResourceNode **resourceNode) {
-    Lotto *y = z;
-    Lotto *x;
-    Color yOriginalColor = y->color;
-
-    if (z->left == NULL) {
-        x = z->right;
-        trapiantaLotto(root, z, z->right);
-    } else if (z->right == NULL) {
-        x = z->left;
-        trapiantaLotto(root, z, z->left);
-    } else {
-        y = trovaMinimoLotto(z->right);
-        yOriginalColor = y->color;
-        x = y->right;
-        if (y->parent == z) {
-            if (x != NULL) {
-                x->parent = y;
-            }
-        } else {
-            trapiantaLotto(root, y, y->right);
-            y->right = z->right;
-            y->right->parent = y;
-        }
-        trapiantaLotto(root, z, y);
-        y->left = z->left;
-        y->left->parent = y;
-        y->color = z->color;
-    }
-
-    if (yOriginalColor == BLACK) {
-        riparaAlberoMagazzinoRM(root, x);
-    }
-
-    free(z);
-
-    // Verifica che resourceNode non sia NULL e che il puntatore sia valido
-    if (resourceNode != NULL && *resourceNode != NULL) {
-        // Aggiorna il numero di lotti nel ResourceNode
-        (*resourceNode)->num_lotti--;
-
-        // Se non ci sono più lotti, rimuovi il ResourceNode
-        if ((*resourceNode)->num_lotti == 0) {
-            if ((*resourceNode)->parent != NULL) {
-                rimuoviNodo(&(*resourceNode)->parent->left, *resourceNode);
-                // Nota: La rimozione del nodo potrebbe richiedere la gestione dell'aggiornamento dei puntatori
-                // Se necessario, gestire la rimozione di `resourceNode` qui.
-            }
-        }
-    } else {
-        // Gestisci il caso in cui resourceNode è NULL o non valido
-        printf("Error: Invalid ResourceNode pointer\n");
-    }
-}
-
-
-
-
-
-//============================PREPARA=ORDINI===================
-// Funzione ricorsiva per sommare il peso degli ingredienti nell'albero
-int sommaPesoIngredienti(IngredientNode *nodo) {
-    if (nodo == NULL) {
-        return 0;
-    }
-
-    // Somma il peso corrente con il peso dei nodi figli (sinistro e destro)
-    int peso_sinistro = sommaPesoIngredienti(nodo->left);
-    int peso_destro = sommaPesoIngredienti(nodo->right);
-
-    // Somma la quantità dell'ingrediente corrente con il peso dei figli
-    return nodo->quantita + peso_sinistro + peso_destro;
-}
-
-// Funzione per calcolare il peso totale della ricetta
-int calcolaPeso(const Ricetta *ricetta) {
-    // Se la radice dell'albero è NULL, non ci sono ingredienti
-    if (ricetta->root == NULL) {
-        return 0;
-    }
-
-    // Chiama la funzione ricorsiva per sommare il peso degli ingredienti
-    return sommaPesoIngredienti(ricetta->root);
-}
+//============================PREPARA=ORDINI===========================
 
 void verificaScadenzaLotti(Lotto **root, ResourceNode *ingredienteMagazzino, int time, int *trovatoScaduto, int *trovatoNonScaduto) {
     if (*root == NULL || *trovatoScaduto || *trovatoNonScaduto) {
@@ -1706,139 +1344,78 @@ void verificaQuantita(ResourceNode *resource_node) {
     }
 }
 
+int calcolaFattibilita(const Ordine *orderToProcess) {
 
+    RecipeNode *associatedRecipe = orderToProcess->associatedRecipe;
+    int num_ingredienti = associatedRecipe->num_ingredienti;
 
+    // Per ogni ingrediente della ricetta, verifica se è disponibile nel magazzino in quantità sufficiente
+    for (int i = 0; i < num_ingredienti; i++) {
 
+        Ingrediente ingredienteNecessario = associatedRecipe->ingredienti[i];
 
+        // Cerca l'ingrediente nel magazzino
+        ResourceNode *ingredienteMagazzino = cercaIngredienteMagazzino(magazzino.root, ingredienteNecessario.ingrediente);
+        if (ingredienteMagazzino == magazzino.nil) {
+            // Se l'ingrediente non esiste nel magazzino, restituisce false
+            return 0;
+        }
 
-bool verificaIngrediente(IngredientNode *nodoIngrediente, Ricetta *associatedRecipe, int ammount) {
-    if (nodoIngrediente == NULL) {
-        return true;  // Raggiunto un ramo vuoto, nessun problema
+        // Verifica se la quantità disponibile è sufficiente
+        if (ingredienteMagazzino->maxGrammi < ingredienteNecessario.quantita) {
+            // Se la quantità non è sufficiente, restituisce false
+            return 0;
+        }
     }
 
-    IngredientNode *ingredienteRicetta = searchIngredientRecipe(associatedRecipe->root, nodoIngrediente->ingrediente);
-
-    if (ingredienteRicetta == NULL) {
-        printf("Errore: Ingrediente %s non trovato nella ricetta.\n", nodoIngrediente->ingrediente);
-        return false;
-    }
-
-    const int grammiRichiesti = ingredienteRicetta->quantita * ammount;
-
-    ResourceNode *ingredienteMagazzino = searchIngredientMagazzino(magazzino.ingredienti, ingredienteRicetta->ingrediente);
-
-    if (ingredienteMagazzino == NULL) {
-        //printf("Ingrediente %s non trovato nel magazzino!\n", nodoIngrediente->ingrediente);
-        return false; // Non fattibile
-    }
-
-    if (grammiRichiesti > ingredienteMagazzino->maxGrammi) {
-        //printf("Quantita insufficiente per l'ingrediente %s!\n", nodoIngrediente->ingrediente);
-        return false; // Non fattibile
-    }
-
-    return verificaIngrediente(nodoIngrediente->left, associatedRecipe, ammount) &&
-           verificaIngrediente(nodoIngrediente->right, associatedRecipe, ammount);
+    // Se tutti gli ingredienti sono disponibili in quantità sufficiente, restituisce true
+    return 1;
 }
 
 
-// Funzione principale che calcola la fattibilità
-int calcolaFattibilita(Ricetta *associatedRecipe, int ammount) {
-    // Inizializza l'iterazione dall'albero degli ingredienti
-    return verificaIngrediente(associatedRecipe->root, associatedRecipe, ammount) ? 0 : 1;
-}
-
-// Funzione per creare un nuovo ordine
-Ordine *creaNuovoOrdine(const char *nome_ricetta, const int ammount, Ricetta *associatedRecipe, const int time) {
-    // Allocazione dinamica per un nuovo ordine
-    Ordine *nuovoOrdine = (Ordine *)malloc(sizeof(Ordine));
-
-    if (nuovoOrdine == NULL) {
-        // Gestione errore: impossibile allocare memoria
-        return NULL;
-    }
-
-    // Inizializzazione dei campi
-    nuovoOrdine->nome = strdup(nome_ricetta);  // Duplica la stringa, allocando nuova memoria
-    nuovoOrdine->ammount = ammount;
-    nuovoOrdine->peso = calcolaPeso(associatedRecipe) * ammount;
-    nuovoOrdine->status = calcolaFattibilita(associatedRecipe, ammount);; // Stato iniziale
-    nuovoOrdine->arrivalTime = time;
-    nuovoOrdine->associatedRecipe = associatedRecipe;
-
-    return nuovoOrdine;
-}
 
 // Funzione ricorsiva per consumare lotti in ordine di scadenza
-void consumaLottiPerScadenza(Lotto *nodoLotto, int *grammiRichiesti, int *maxGrammi) {
-    if (nodoLotto == NULL || *grammiRichiesti == 0) {
-        return;
+void consumaLottiPerScadenza(Lotto *lotti, int num_lotti, int *grammiRichiesti, int *maxGrammi) {
+    for (int i = 0; i < num_lotti && *grammiRichiesti > 0; i++) {
+        Lotto *nodoLotto = &lotti[i];
+
+        // Consuma dal lotto corrente
+        if (*grammiRichiesti <= nodoLotto->ammount) {
+            nodoLotto->ammount -= *grammiRichiesti;
+            *maxGrammi -= *grammiRichiesti;
+            *grammiRichiesti = 0; // Tutto soddisfatto, interrompi il loop
+        } else {
+            *grammiRichiesti -= nodoLotto->ammount;
+            *maxGrammi -= nodoLotto->ammount;
+            nodoLotto->ammount = 0; // Lotto esaurito, passa al successivo
+        }
     }
-
-    // Chiamata ricorsiva per il sotto albero sinistro (scadenza minore)
-    consumaLottiPerScadenza(nodoLotto->left, grammiRichiesti, maxGrammi);
-
-    // Consuma dal lotto corrente
-    if (*grammiRichiesti <= nodoLotto->ammount) {
-        nodoLotto->ammount -= *grammiRichiesti;
-        *maxGrammi -= *grammiRichiesti;
-        *grammiRichiesti = 0;
-    } else {
-        *grammiRichiesti -= nodoLotto->ammount;
-        *maxGrammi -= nodoLotto->ammount;
-        nodoLotto->ammount = 0;
-    }
-
-    // Chiamata ricorsiva per il sotto albero destro (scadenza maggiore)
-    consumaLottiPerScadenza(nodoLotto->right, grammiRichiesti, maxGrammi);
 }
 
-// Funzione ricorsiva per preparare l'ordine
-void preparaOrdineRecursiva(const IngredientNode *nodoCorrente, const Ordine *nuovoOrdine) {
-    if (nodoCorrente == NULL) {
-        return;
-    }
 
-    // Chiamata ricorsiva per il sotto albero sinistro
-    preparaOrdineRecursiva(nodoCorrente->left, nuovoOrdine);
-
-    // Trova l'ingrediente nel magazzino utilizzando l'albero rosso-nero
-    ResourceNode *ingredienteMagazzino = searchIngredientMagazzino(magazzino.ingredienti, nodoCorrente->ingrediente);
-
-    if (ingredienteMagazzino == NULL) {
-        printf("Errore: ricetta fattibile non ha un ingrediente");
-        abort();
-    }
-
-    // Calcola la quantità richiesta per l'ordine
-    int grammiRichiesti = nodoCorrente->quantita * nuovoOrdine->ammount;
-
-    // Consuma lotti in ordine di scadenza
-    consumaLottiPerScadenza(ingredienteMagazzino->lotti, &grammiRichiesti, &ingredienteMagazzino->maxGrammi);
-
-    if (grammiRichiesti > 0) {
-       printf("Errore: grave ricetta non preparata per intero");
-       abort();
-    }
-
-    // Chiamata ricorsiva per il sotto albero destro
-    preparaOrdineRecursiva(nodoCorrente->right, nuovoOrdine);
-}
 
 // Funzione principale per preparare l'ordine
-void preparaOrdine(Ordine *nuovoOrdine, const Ricetta *associatedRecipe) {
-    if (nuovoOrdine->status == 1) {
-        printf("Errore: grave ordine in preparazione anche se non fattibile");
-        abort();
-    }
+void preparaOrdine(Ordine *nuovoOrdine, RecipeNode *Recipe ) {
+    RecipeNode *associatedRecipe = Recipe;
 
-    // Inizia la preparazione dell'ordine dal nodo radice
-    preparaOrdineRecursiva(associatedRecipe->root, nuovoOrdine);
+        // Itera attraverso gli ingredienti della ricetta
+        for (int i = 0; i < associatedRecipe->num_ingredienti; i++) {
+            Ingrediente *ingredienteCorrente = &associatedRecipe->ingredienti[i];
 
-    nuovoOrdine->status = 3; // Stato aggiornato: pronto per la spedizione
+            // Trova l'ingrediente nel magazzino utilizzando l'albero rosso-nero
+            ResourceNode *ingredienteMagazzino = cercaIngredienteMagazzino(magazzino.root, ingredienteCorrente->ingrediente);
+
+            // Calcola la quantità richiesta per l'ordine
+            int grammiRichiesti = ingredienteCorrente->quantita * nuovoOrdine->ammount;
+
+            // Consuma lotti in ordine di scadenza
+            consumaLottiPerScadenza(ingredienteMagazzino->lotti,ingredienteMagazzino->num_lotti, &grammiRichiesti, &ingredienteMagazzino->maxGrammi);
+        }
+    // Se tutto è andato a buon fine, incrementa il numero di ordinazioni pronte
     ordinazioni.num_ordinazioni_pronte++;
 }
 
+//TODO OK
 
 int processaOrdiniSospeso(OrderNode *node) {
     int trovato = 0;  // Variabile per memorizzare se un ordine realizzabile è stato trovato
@@ -1866,8 +1443,6 @@ int processaOrdiniSospeso(OrderNode *node) {
 
     return trovato; // Restituisce 1 se è stato trovato almeno un ordine con fattibilità ricalcolata = 1, altrimenti 0
 }
-
-
 
 
 
@@ -1988,117 +1563,35 @@ void stampaOrdini(Ordine* ordiniCaricare, int numPacchi) {
     for (int i = 0; i < numPacchi; i++) {
         printf("%d %s %d\n", ordiniCaricare[i].arrivalTime,ordiniCaricare[i].nome,ordiniCaricare[i].ammount);
 
-        //char buffer[256]; // Assicurati che sia abbastanza grande per contenere tutta la stringa
-        //sprintf(buffer, "%d %s %d\n", ordiniCaricare[i].arrivalTime, ordiniCaricare[i].nome, ordiniCaricare[i].ammount);
-        //printf("ordine: %d", i );
-        //fputs(buffer, file2);
-
     }
 }
 
 //=========================================CORRIERE=====================================================================
 
-int confrontaOrdiniPerPeso(const void *a, const void *b) {
-    const Ordine *ordineA = (const Ordine *)a;
-    const Ordine *ordineB = (const Ordine *)b;
 
-    // Ordinamento per peso crescente
-    if(ordineB->peso!=ordineA->peso) {
-        return ordineB->peso - ordineA->peso;
-    } else {
-        return ordineA->arrivalTime - ordineB->arrivalTime;
-    }
-
-}
-
-// Funzione per ordinare l'array di ordini per peso
-void ordinaOrdiniPerPeso(Ordine *ordini, int numOrdini) {
-    qsort(ordini, numOrdini, sizeof(Ordine), confrontaOrdiniPerPeso);
-}
-
-void raccogliOrdini(OrderNode *root, OrdineConNodo **ordiniTemp, int *numOrdini) {
-    if (root == NULL) {
+void caricaOrdiniInOrder(Ordinazioni *T, OrderNode *nodo, OrderNode *nil, int *caricoCorrente, int caricoMassimo) {
+    if (nodo == nil || *caricoCorrente + nodo->ordinePronto->peso > caricoMassimo) {
         return;
     }
 
-    // Visita il sottoalbero sinistro
-    raccogliOrdini(root->left, ordiniTemp, numOrdini);
+    //Visita il sottoalbero sinistro
+    caricaOrdiniInOrder(T, nodo->left, nil, caricoCorrente, caricoMassimo);
 
-    // Processa il nodo corrente
-    if (root->ordine.status == 3) { // Solo gli ordini pronti per la spedizione
-        *ordiniTemp = (OrdineConNodo*)realloc(*ordiniTemp, (*numOrdini + 1) * sizeof(OrdineConNodo));
-        if (*ordiniTemp == NULL) {
-            perror("Errore realloc");
-            exit(1);
-        }
-        (*ordiniTemp)[*numOrdini].ordine = root->ordine;
-        (*ordiniTemp)[*numOrdini].nodoAlbero = root;  // Salva il puntatore al nodo
-        (*numOrdini)++;
+    // Gestisci il nodo corrente
+    if (*caricoCorrente + nodo->ordinePronto->peso <= caricoMassimo) {
+        *caricoCorrente += nodo->ordinePronto->peso;
+        printf("%d %s %d\n",nodo->ordinePronto->arrivalTime,nodo->ordinePronto->nome,nodo->ordinePronto->peso);
+        removeLoadedOrder(&ordinazioni, nodo);
+    } else {
+        return;  // Se il prossimo ordine supera il carico massimo, interrompi
     }
 
     // Visita il sottoalbero destro
-    raccogliOrdini(root->right, ordiniTemp, numOrdini);
+    caricaOrdiniInOrder(T, nodo->right, nil, caricoCorrente, caricoMassimo);
 }
 
-
-void caricaOrdiniSuCorriere(OrderNode *root, Ordinazioni *ordiniDaSpedire, Corriere *corriere) {
-    OrdineConNodo *ordiniTemp = NULL;
-    int numOrdini = 0;
-
-    // Raccoglie tutti gli ordini dall'albero
-    raccogliOrdini(root, &ordiniTemp, &numOrdini);
-
-    Ordine *ordiniCaricare = NULL;
-    int numPacchi = 0;
-
-    for (int i = 0; i <numOrdini; i++) {
-        if ((corriere->caricoParziale + ordiniTemp[i].ordine.peso) > corriere->caricoMax) {
-            break;
-        }
-
-        // Aggiorna lo stato dell'ordine nel nodo dell'albero
-        ordiniTemp[i].nodoAlbero->ordine.status = 4;  // Cambia lo stato dell'ordine a "spedito"
-
-        // Alloca spazio per un nuovo ordine
-        ordiniCaricare = (Ordine*)realloc(ordiniCaricare, (numPacchi + 1) * sizeof(Ordine));
-
-        // Inserisce l'ordine nell'array finale
-        ordiniCaricare[numPacchi] = ordiniTemp[i].ordine;
-        numPacchi++;
-
-        // Aumenta il carico del corriere
-        corriere->caricoParziale += ordiniTemp[i].ordine.peso;
-
-        //Aggiorna ordini in sospeso
-        ordiniTemp[i].ordine.associatedRecipe->activeOrders--;
-        ordinazioni.num_ordinazioni_pronte--;
-    }
-
-    // Stampa gli ordini caricati
-    if (ordiniCaricare == NULL) {
-        printf("camioncino vuoto\n");
-        //fputs("camioncino vuoto\n",file2);
-    } else {
-
-       // char buffer[256]; // Assicurati che sia abbastanza grande per contenere tutta la stringa
-       // sprintf(buffer, "time : %d\n", time); // Correzione: rimosse le parentesi
-       // fputs(buffer, file2); // Scrivi il contenuto del buffer nel file TODO TESING
-
-        ordinaOrdiniPerPeso(ordiniCaricare, numPacchi);
-        stampaOrdini(ordiniCaricare, numPacchi);
-    }
-
-    // Libera la memoria temporanea
-    if (ordiniTemp != NULL) {
-        free(ordiniTemp);
-    }
-    if (ordiniCaricare != NULL) {
-        free(ordiniCaricare);
-    }
-
-    // Rimuovi gli ordini caricati dal magazzino
-    corriere->caricoParziale = 0;
-    rimuoviOrdini(&ordinazioni);
+void caricaOrdiniSuCorriere() {
+    caricaOrdiniInOrder(&ordinazioni, ordinazioni.root, ordinazioni.nil, &corriere.caricoParziale, corriere.caricoMax);
 }
 
 //=========================================INPUT========================================================================
@@ -2125,12 +1618,11 @@ void processInput(const char *input) {
     // Identifica il comando (4 comandi)
     if (strcmp(token, "aggiungi_ricetta") == 0) {
         // Recupera il nome della ricetta
-        const char *nome_ricetta = strtok(NULL, " ");
+        char *nome_ricetta = strtok(NULL, " ");
 
         // Verifica ricetta già esistente
-        if (searchRicetta(catalogo.root, nome_ricetta) != NULL) {  // Usa NULL per puntatori
+        if (cercaRicetta(catalogo.root, nome_ricetta) != catalogo.nil) {  // Usa NULL per puntatori
             printf("ignorato\n");
-            //fputs("ignorato\n",file2);
             free(input_copy);
             free(input_copy2);
             return;
@@ -2148,19 +1640,8 @@ void processInput(const char *input) {
         }
 
         // Creazione di una nuova ricetta
-        Ricetta *nuovaRicetta = malloc(sizeof(Ricetta)); // Allocazione dinamica della ricetta
+        RecipeNode *nuovaRicetta = createRecipeNode(nome_ricetta);
 
-        if (nuovaRicetta == NULL) {
-            // Gestisci errore di allocazione
-            printf("Errore di allocazione della memoria per la ricetta\n");
-            free(input_copy);
-            free(input_copy2);
-            return;
-        }
-        nuovaRicetta->nome = strdup(nome_ricetta);  // Copia del nome della ricetta
-        nuovaRicetta->root = NULL; // Inizializza la radice degli ingredienti
-        nuovaRicetta->num_ingredienti = num_ingredienti;
-        nuovaRicetta->activeOrders = 0;
 
         // Resetta `strtok` per rileggere gli ingredienti e quantità
         strtok(input_copy2, " ");  // Resetta strtok sulla copia
@@ -2173,13 +1654,12 @@ void processInput(const char *input) {
             int ammount = atoi(ammount_str);
 
             // Aggiungi l'ingrediente alla ricetta
-            insertIngredient(nuovaRicetta, nome_ingrediente, ammount);
+            inserisciIngredienteRicetta(nuovaRicetta, nome_ingrediente, ammount);
         }
 
         // Aggiunta ricetta al ricettario
-        insertRicetta(&catalogo.root, nuovaRicetta);
+        InserisciRicetta(&catalogo, nuovaRicetta);
         printf("aggiunta\n");
-        //fputs("aggiunta\n",file2);
 
         // Libera memoria temporanea
         free(input_copy);
@@ -2190,33 +1670,27 @@ void processInput(const char *input) {
 
     if (strcmp(token, "rimuovi_ricetta") == 0) {
         // Recupera il nome della ricetta
-        const char *nome_ricetta = strtok(NULL, " ");
+        char *nome_ricetta = strtok(NULL, " ");
 
-        Ricetta *recipeToKill = searchRicetta(catalogo.root, nome_ricetta);
+        RecipeNode *recipeToKill = cercaRicetta(catalogo.root, nome_ricetta);
 
-        if(recipeToKill==NULL)
+        if(recipeToKill==catalogo.nil)
         {
            printf("non presente\n");
-           //fputs("non presente\n",file2);
-
            free(input_copy);
            return;
         }
 
         if(recipeToKill->activeOrders!=0){
            printf("ordini in sospeso\n");
-           //fputs("ordini in sospeso\n",file2);
            free(input_copy);
            return;
         }
 
-        rimuoviRicetta(recipeToKill);
-
-        updateOrderRecipeIndex(&ordinazioni,catalogo.root);
-
+        RimuoviRicetta(recipeToKill);
+        updateOrderRecipeIndex(&ordinazionicatalogo.root); //TODO modificare
         free(input_copy);
         printf("rimossa\n");
-        //fputs("rimossa\n",file2);
         return;
     }
 
@@ -2243,16 +1717,21 @@ void processInput(const char *input) {
         int scadenza = atoi(scadenza_str);
 
         if(scadenza>tempo) {
-            // Aggiungi i nuovi lotti al magazzino
-           aggiungiIngredienteMagazzino(&magazzino,lotto_ingrediente, ammount, scadenza);
+           // Aggiungi i nuovi lotti al magazzino
+           ResourceNode *newLottoToAdd = cercaIngredienteMagazzino(magazzino.root,lotto_ingrediente);
+           if(newLottoToAdd==magazzino.nil)
+           {
+               newLottoToAdd =  createResourceNode(lotto_ingrediente);
+               aggiungiIngredienteMagazzino(&magazzino,newLottoToAdd);
+           }
+           inserisciLottoMagazzino(newLottoToAdd,ammount,scadenza);
         }
     }
         free(input_copy);
         free(input_copy2);
         printf("rifornito\n");
-        //fputs("rifornito\n",file2);
 
-        processaOrdiniSospeso(ordinazioni.ordinazioni);
+        processaOrdiniSospeso(ordinazioni.ordinazioni); //TODO
 
         return;
     }
@@ -2261,20 +1740,22 @@ void processInput(const char *input) {
         // Recupera il nome della ricetta associata all'ordine
         char *nome_ricetta = strtok(NULL, " ");
 
-        Ricetta *associatedRecipe = searchRicetta(catalogo.root, nome_ricetta);
+        RecipeNode *associatedRecipe = cercaRicetta(catalogo.root, nome_ricetta);
 
-        if (associatedRecipe == NULL) {
+        if (associatedRecipe == catalogo.nil) {
             printf("rifiutato\n");
-            //fputs("rifiutato\n",file2);
         } else {
             printf("accettato\n");
-            //fputs("accettato\n",file2);
             const int ammount = atoi(strtok(NULL, " "));
-            Ordine *nuovoOrdine = creaNuovoOrdine(nome_ricetta, ammount, associatedRecipe, tempo);
-            if(nuovoOrdine->status==0) {
+            Ordine *nuovoOrdine = createOrdine(nome_ricetta, ammount, associatedRecipe);
+            if(calcolaFattibilita(nuovoOrdine)) {
                 preparaOrdine(nuovoOrdine, associatedRecipe);
+                InserisciOrdinePronto(&ordinazioni,createOrderNode(nuovoOrdine));
+            }else
+            {
+                inserisciOrdineSospeso(nuovoOrdine);
             }
-            insertOrder(&(ordinazioni.ordinazioni), *nuovoOrdine);
+
             associatedRecipe->activeOrders++;
 
             // Libera la memoria allocata per `nuovoOrdine`
@@ -2294,9 +1775,11 @@ int main() {
 
     //inizializzazione degli alberi
     initCatalogo(&catalogo);
+    initMagazzino(&magazzino);
+    initOrdinazioni(&ordinazioni);
 
 
-   // clock_t start = clock();
+    clock_t start = clock();
     char buffer[BUFFER_SIZE];
 
     //TODO
@@ -2308,8 +1791,8 @@ int main() {
     //
 
 
-    FILE *file = fopen("open7.txt", "r");
-    file2 = fopen("TestOut.txt", "w");
+    FILE *file = fopen("example.txt", "r");
+    FILE *file2 = fopen("TestOut.txt", "w");
 
     if (file == NULL) {
         perror("Errore nell'apertura del file");
@@ -2348,18 +1831,9 @@ int main() {
             buffer[len - 1] = '\0';
         }
 
-        printf("Tempo: %d", tempo);
-
-        if(tempo == 2000) {
-            printCatalogo(&catalogo);
-            stampaMagazzino(&magazzino);
-            printOrdinazioni(&ordinazioni);
-            abort();
-        }
-
         if (tempo % timeSpedizioni == 0 && tempo != 0) {
             // processa il corriere
-            caricaOrdiniSuCorriere(ordinazioni.ordinazioni, &ordinazioni, &corriere);
+            caricaOrdiniSuCorriere();
         }
 
         //printf("Verifico la scadenza di tutti gli ingredienti)
@@ -2377,7 +1851,7 @@ int main() {
 
     if (tempo % timeSpedizioni == 0 && tempo != 0) {
         // processa il corriere
-        caricaOrdiniSuCorriere(ordinazioni.ordinazioni, &ordinazioni, &corriere);
+        caricaOrdiniSuCorriere();
     }
 
     // Chiusura del file di output
@@ -2395,13 +1869,13 @@ int main() {
     fclose(file);
 
     // Ottieni il tempo di fine
-    //clock_t end = clock();
+    clock_t end = clock();
 
     // Calcola il tempo trascorso in secondi
-   // double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+    double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
 
     // Mostra il tempo di esecuzione
-    //printf("Tempo di esecuzione: %f secondi\n", time_spent);
+    printf("Tempo di esecuzione: %f secondi\n", time_spent);
 
     return 0;
 }
