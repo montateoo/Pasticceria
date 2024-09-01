@@ -308,6 +308,7 @@ void InserisciRicetta(Catalogo *T, RecipeNode *z) {
     z->color = RED;               // Imposta il colore di z a rosso
 
     RicettaInsertFix(T, z);        // Effettua il fixup per mantenere le proprietà dell'albero rosso-nero
+    T->num_ricette++;
 }
 
 // Funzione per aggiungere un nuovo ingrediente a un nodo ricetta
@@ -435,6 +436,7 @@ void RicettaDeleteFix(Catalogo *T, RecipeNode *x) {
         }
     }
     x->color = BLACK;
+    T->num_ricette--;
 }
 
 RecipeNode* RimuoviRicetta(RecipeNode *z) {
@@ -498,7 +500,7 @@ Ordine* createOrdine( char *nome, int ammount, RecipeNode *associatedRecipe) {
     newOrder->ammount = ammount;
     newOrder->arrivalTime = tempo;
     newOrder->associatedRecipe = associatedRecipe;
-    newOrder->peso = calcolaPeso(associatedRecipe);
+    newOrder->peso = calcolaPeso(associatedRecipe)*ammount;
 
     return newOrder;
 }
@@ -781,35 +783,34 @@ void removeLoadedOrder(Ordinazioni *T, OrderNode *z) {
 }
 
 
-//TODO qui
+// Dichiarazione della funzione helper
 
+// Definizione della funzione helper fuori dalla funzione principale
+void aggiornaRicetteAlbero(OrderNode *nodo, Catalogo *catalogo, OrderNode *nil) {
+    if (nodo != nil) {
+        // Aggiorna la ricetta associata all'ordine corrente
+        nodo->ordinePronto->associatedRecipe = cercaRicetta(catalogo->root, nodo->ordinePronto->nome);
 
-//ricalcola i puntatori delgli ordini alle ricette se una ricetta e stata eliminata
-// Funzione per aggiornare la ricetta associata ad un singolo nodo
-void aggiornaRicettaPerNodo(OrderNode *nodo, RecipeNode *rootRicette) {
-    if (nodo == NULL) {
-        return; // Condizione base: nodo nullo
+        // Procedi con il sottoalbero sinistro
+        aggiornaRicetteAlbero(nodo->left, catalogo, nil);
+
+        // Procedi con il sottoalbero destro
+        aggiornaRicetteAlbero(nodo->right, catalogo, nil);
     }
-
-    // Cerca la ricetta associata al nome dell'ordine
-    if (nodo->ordine.associatedRecipe != NULL && nodo->ordine.nome != NULL) {
-        nodo->ordine.associatedRecipe = searchRicetta(rootRicette, nodo->ordine.nome);
-    }
-
-    // Visita ricorsivamente i sottoalberi sinistro e destro
-    aggiornaRicettaPerNodo(nodo->left, rootRicette);
-    aggiornaRicettaPerNodo(nodo->right, rootRicette);
 }
 
-// Funzione principale per aggiornare tutte le ricette nell'albero delle ordinazioni
-void updateOrderRecipeIndex(Ordinazioni *ordinazioni, RecipeNode *rootRicette) {
-    if (ordinazioni == NULL || ordinazioni->ordinazioni == NULL) {
-        return; // Se non ci sono ordinazioni o se l'albero è vuoto, esci dalla funzione
+void aggiornaRicetteAssociate(Ordinazioni *ordinazioni, Catalogo *catalogo) {
+    // Aggiorna le ricette degli ordini sospesi
+    for (int i = 0; i < ordinazioni->num_ordinazioni_sospese; i++) {
+        Ordine *ordine = &ordinazioni->sospesi[i];
+        ordine->associatedRecipe = cercaRicetta(catalogo->root, ordine->nome);
     }
 
-    // Avvia l'aggiornamento partendo dalla radice dell'albero delle ordinazioni
-    aggiornaRicettaPerNodo(ordinazioni->ordinazioni, rootRicette);
+    // Aggiorna le ricette associate agli ordini pronti nell'albero
+    aggiornaRicetteAlbero(ordinazioni->root, catalogo, ordinazioni->nil);
 }
+
+
 
 //===================================MAGAZZINO=================================
 
@@ -1002,347 +1003,47 @@ void aggiungiIngredienteMagazzino(Magazzino *T, ResourceNode *z)
     ResourceInsertFix(T, z);        // Effettua il fixup per mantenere le proprietà dell'albero rosso-nero
 }
 
-//TODO QUI
-
-void riparaAlberoIngredienteRM(ResourceNode **root, ResourceNode *x) {
-    // Controlla se x è NULL all'inizio del ciclo
-    while (x != *root && (x == NULL || x->color == BLACK)) {
-        if (x == NULL) {
-            // In questo caso, x è NULL e non possiamo fare nulla
-            break;
-        }
-
-        if (x == x->parent->left) {
-            ResourceNode *w = x->parent->right;
-
-            // Caso 1: Il fratello w è rosso
-            if (w != NULL && w->color == RED) {
-                w->color = BLACK;
-                x->parent->color = RED;
-                ruotaSinistra(root, x->parent);
-                w = x->parent->right;
-            }
-
-            // Caso 2: Entrambi i figli di w sono neri
-            if (w != NULL && (w->left == NULL || w->left->color == BLACK) &&
-                (w->right == NULL || w->right->color == BLACK)) {
-                w->color = RED;
-                x = x->parent;
-            } else {
-                // Caso 3: Il figlio destro di w è nero e il figlio sinistro è rosso
-                if (w != NULL && (w->right == NULL || w->right->color == BLACK)) {
-                    if (w->left != NULL) {
-                        w->left->color = BLACK;
-                    }
-                    w->color = RED;
-                    ruotaDestra(root, w);
-                    w = x->parent->right;
-                }
-
-                // Caso 4: Il figlio destro di w è rosso
-                if (w != NULL) {
-                    w->color = x->parent->color;
-                    x->parent->color = BLACK;
-                    if (w->right != NULL) {
-                        w->right->color = BLACK;
-                    }
-                    ruotaSinistra(root, x->parent);
-                    x = *root;
-                }
-            }
-        } else {
-            // Simmetrico al caso sopra, ma per il lato destro
-            ResourceNode *w = x->parent->left;
-
-            // Caso 1: Il fratello w è rosso
-            if (w != NULL && w->color == RED) {
-                w->color = BLACK;
-                x->parent->color = RED;
-                ruotaDestra(root, x->parent);
-                w = x->parent->left;
-            }
-
-            // Caso 2: Entrambi i figli di w sono neri
-            if (w != NULL && (w->left == NULL || w->left->color == BLACK) &&
-                (w->right == NULL || w->right->color == BLACK)) {
-                w->color = RED;
-                x = x->parent;
-            } else {
-                // Caso 3: Il figlio sinistro di w è nero e il figlio destro è rosso
-                if (w != NULL && (w->left == NULL || w->left->color == BLACK)) {
-                    if (w->right != NULL) {
-                        w->right->color = BLACK;
-                    }
-                    w->color = RED;
-                    ruotaSinistra(root, w);
-                    w = x->parent->left;
-                }
-
-                // Caso 4: Il figlio sinistro di w è rosso
-                if (w != NULL) {
-                    w->color = x->parent->color;
-                    x->parent->color = BLACK;
-                    if (w->left != NULL) {
-                        w->left->color = BLACK;
-                    }
-                    ruotaDestra(root, x->parent);
-                    x = *root;
-                }
-            }
-        }
-    }
-
-    if (x != NULL) {
-        x->color = BLACK;
-    }
-}
-
-
-void trapiantaNodo(ResourceNode **root, ResourceNode *u, ResourceNode *v) {
-    if (u->parent == NULL) {
-        *root = v;
-    } else if (u == u->parent->left) {
-        u->parent->left = v;
-    } else {
-        u->parent->right = v;
-    }
-    if (v != NULL) {
-        v->parent = u->parent;
-    }
-}
-
-ResourceNode *trovaMinimoNodo(ResourceNode *node) {
-    while (node->left != NULL) {
-        node = node->left;
-    }
-    return node;
-}
-
-
-void rimuoviNodo(ResourceNode **root, ResourceNode *z) {
-    ResourceNode *y = z;
-    ResourceNode *x;
-    Color yOriginalColor = y->color;
-
-    if (z->left == NULL) {
-        x = z->right;
-        trapiantaNodo(root, z, z->right);
-    } else if (z->right == NULL) {
-        x = z->left;
-        trapiantaNodo(root, z, z->left);
-    } else {
-        y = trovaMinimoNodo(z->right);
-        yOriginalColor = y->color;
-        x = y->right;
-        if (y->parent == z) {
-            if (x != NULL) {
-                x->parent = y;
-            }
-        } else {
-            trapiantaNodo(root, y, y->right);
-            y->right = z->right;
-            y->right->parent = y;
-        }
-        trapiantaNodo(root, z, y);
-        y->left = z->left;
-        y->left->parent = y;
-        y->color = z->color;
-    }
-
-    if (yOriginalColor == BLACK) {
-        riparaAlberoIngredienteRM(root, x);
-    }
-
-    free(z);
-}
+//TODO rimozione degli ingredienti vuoti
 
 //============================PREPARA=ORDINI===========================
 
-void verificaScadenzaLotti(Lotto **root, ResourceNode *ingredienteMagazzino, int time, int *trovatoScaduto, int *trovatoNonScaduto) {
-    if (*root == NULL || *trovatoScaduto || *trovatoNonScaduto) {
+void clean_lots(ResourceNode *node, ResourceNode *nil, int current_time) {
+    if (node == nil) {
         return;
     }
 
-    // Controlla prima il sottoalbero sinistro
-    verificaScadenzaLotti(&(*root)->left, ingredienteMagazzino, time, trovatoScaduto, trovatoNonScaduto);
-
-    if (*trovatoScaduto || *trovatoNonScaduto) {
-        return;
-    }
-
-    // Controllo del nodo corrente
-    if ((*root)->scadenza <= time) {
-        Lotto *nodoDaRimuovere = *root;
-
-        // Decrementa il numero di lotti disponibili
-        ingredienteMagazzino->num_lotti--;
-
-        // Aggiorna il totale di grammi disponibili per l'ingrediente
-        ingredienteMagazzino->maxGrammi -= nodoDaRimuovere->ammount;
-
-        // Rimuove il lotto scaduto
-        rimuoviLotto(root, nodoDaRimuovere, ingredienteMagazzino);
-
-        *trovatoScaduto = 1;
-        return;
-    }
-
-    if ((*root)->scadenza > time) {
-        *trovatoNonScaduto = 1;
-        return;
-    }
-
-    // Controlla il sottoalbero destro
-    verificaScadenzaLotti(&(*root)->right, ingredienteMagazzino, time, trovatoScaduto, trovatoNonScaduto);
-}
-
-void verificaScadenza(ResourceNode *resource_node, int time) {
-    if (resource_node == NULL) {
-        return;
-    }
-
-    ResourceNode *currentNode = resource_node;
-
-    while (currentNode != NULL) {
-        int trovatoScaduto = 0;
-        int trovatoNonScaduto = 0;
-
-        verificaScadenzaLotti(&currentNode->lotti, currentNode, time, &trovatoScaduto, &trovatoNonScaduto);
-
-        // Se il nodo corrente non ha più lotti, rimuovilo e aggiorna currentNode
-        if (currentNode->num_lotti == 0) {
-            ResourceNode *nodoDaRimuovere = currentNode;
-
-            // Trova il successore per continuare l'iterazione
-            if (currentNode->right != NULL) {
-                currentNode = currentNode->right;
-                while (currentNode->left != NULL) {
-                    currentNode = currentNode->left;
-                }
-            } else {
-                ResourceNode *parent = nodoDaRimuovere->parent;
-                while (parent != NULL && nodoDaRimuovere == parent->right) {
-                    nodoDaRimuovere = parent;
-                    parent = parent->parent;
-                }
-                currentNode = parent;
+    int i = 0;
+    while (i < node->num_lotti) {
+        if (node->lotti[i].scadenza <= current_time || node->lotti[i].ammount == 0) {
+            // Rimuove il lotto spostando gli elementi successivi indietro
+            for (int j = i; j < node->num_lotti - 1; j++) {
+                node->lotti[j] = node->lotti[j + 1];
             }
+            node->num_lotti--;
 
-            // Rimuovi il nodo ResourceNode e bilancia l'albero
-            rimuoviNodo(&resource_node, nodoDaRimuovere);
+            // Dealloca l'array dei lotti se non ci sono più lotti rimasti
+            if (node->num_lotti == 0) {
+                free(node->lotti);
+                node->lotti = NULL;
+            } else {
+                // Ridimensiona l'array dei lotti
+                node->lotti = realloc(node->lotti, node->num_lotti * sizeof(Lotto));
+            }
         } else {
-            // Passa al nodo successivo
-            if (currentNode->right != NULL) {
-                currentNode = currentNode->right;
-                while (currentNode->left != NULL) {
-                    currentNode = currentNode->left;
-                }
-            } else {
-                ResourceNode *parent = currentNode->parent;
-                while (parent != NULL && currentNode == parent->right) {
-                    currentNode = parent;
-                    parent = parent->parent;
-                }
-                currentNode = parent;
-            }
+            // Se trova un lotto non scaduto e con quantità > 0, interrompe il controllo e passa al nodo successivo
+            break;
         }
     }
+
+    // Itera ricorsivamente sui nodi figli sinistro e destro
+    clean_lots(node->left, nil, current_time);
+    clean_lots(node->right, nil, current_time);
 }
 
-
-
-
-
-void verificaQuantitaLotti(Lotto **root, ResourceNode *ingredienteMagazzino, int *trovatoEsaurito, int *trovatoNonVuoto) {
-    if (*root == NULL || *trovatoEsaurito || *trovatoNonVuoto) {
-        return;
-    }
-
-    // Controlla prima il sottoalbero sinistro
-    verificaQuantitaLotti(&(*root)->left, ingredienteMagazzino, trovatoEsaurito, trovatoNonVuoto);
-
-    // Se un lotto esaurito o non vuoto è stato trovato, termina la ricerca
-    if (*trovatoEsaurito || *trovatoNonVuoto) {
-        return;
-    }
-
-    // Controllo del nodo corrente
-    if ((*root)->ammount == 0) {
-        Lotto *nodoDaRimuovere = *root;
-
-        // Rimuove il lotto esaurito
-        rimuoviLotto(root, nodoDaRimuovere, ingredienteMagazzino);
-
-        // Decrementa il numero di lotti disponibili
-        ingredienteMagazzino->num_lotti--;
-
-        // Lotto esaurito trovato, si può terminare la ricerca per questo ingrediente
-        *trovatoEsaurito = 1;
-        return;
-    } else if ((*root)->ammount > 0) {
-        // Lotto non vuoto trovato, si può terminare la ricerca per questo ingrediente
-        *trovatoNonVuoto = 1;
-        return;
-    }
-
-    // Se non è stato trovato un lotto esaurito o non vuoto, controlla il sottoalbero destro
-    verificaQuantitaLotti(&(*root)->right, ingredienteMagazzino, trovatoEsaurito, trovatoNonVuoto);
+void verificaScadenza() {
+    clean_lots(magazzino.root, magazzino.nil, tempo);
 }
 
-void verificaQuantita(ResourceNode *resource_node) {
-    if (resource_node == NULL) {
-        return;
-    }
-
-    ResourceNode *currentNode = resource_node;
-    ResourceNode *nextNode;
-
-    while (currentNode != NULL) {
-        int trovatoEsaurito = 0;
-        int trovatoNonVuoto = 0;
-        verificaQuantitaLotti(&currentNode->lotti, currentNode, &trovatoEsaurito, &trovatoNonVuoto);
-
-        // Se il nodo corrente non ha più lotti, rimuovilo e aggiorna currentNode
-        if (currentNode->num_lotti == 0) {
-            ResourceNode *nodoDaRimuovere = currentNode;
-
-            // Trova il successore per continuare l'iterazione
-            if (nodoDaRimuovere->right != NULL) {
-                nextNode = nodoDaRimuovere->right;
-                while (nextNode->left != NULL) {
-                    nextNode = nextNode->left;
-                }
-            } else {
-                nextNode = nodoDaRimuovere->parent;
-                while (nextNode != NULL && nodoDaRimuovere == nextNode->right) {
-                    nodoDaRimuovere = nextNode;
-                    nextNode = nextNode->parent;
-                }
-            }
-
-            // Rimuovi il nodo ResourceNode e bilancia l'albero
-            rimuoviNodo(&resource_node, nodoDaRimuovere);
-
-            // Dopo la rimozione, aggiorna currentNode
-            currentNode = nextNode;
-        } else {
-            // Passa al nodo successivo
-            if (currentNode->right != NULL) {
-                nextNode = currentNode->right;
-                while (nextNode->left != NULL) {
-                    nextNode = nextNode->left;
-                }
-            } else {
-                nextNode = currentNode->parent;
-                while (nextNode != NULL && currentNode == nextNode->right) {
-                    currentNode = nextNode;
-                    nextNode = nextNode->parent;
-                }
-            }
-            currentNode = nextNode;
-        }
-    }
-}
 
 int calcolaFattibilita(const Ordine *orderToProcess) {
 
@@ -1362,7 +1063,7 @@ int calcolaFattibilita(const Ordine *orderToProcess) {
         }
 
         // Verifica se la quantità disponibile è sufficiente
-        if (ingredienteMagazzino->maxGrammi < ingredienteNecessario.quantita) {
+        if (ingredienteMagazzino->maxGrammi < ingredienteNecessario.quantita * orderToProcess->ammount) {
             // Se la quantità non è sufficiente, restituisce false
             return 0;
         }
@@ -1415,156 +1116,136 @@ void preparaOrdine(Ordine *nuovoOrdine, RecipeNode *Recipe ) {
     ordinazioni.num_ordinazioni_pronte++;
 }
 
-//TODO OK
-
-int processaOrdiniSospeso(OrderNode *node) {
-    int trovato = 0;  // Variabile per memorizzare se un ordine realizzabile è stato trovato
-
-    if (node == NULL) {
-        return 0; // Restituisce 0 se il nodo è nullo
+// Funzione per rimuovere un ordine sospeso dalla lista
+void rimuoviOrdineSospeso(Ordinazioni *ordinazioni, int index) {
+    // Sposta tutti gli ordini successivi a sinistra di una posizione
+    for (int j = index; j < ordinazioni->num_ordinazioni_sospese - 1; j++) {
+        ordinazioni->sospesi[j] = ordinazioni->sospesi[j + 1];
     }
-
-    // Visita del sottoalbero sinistro (più piccolo arrivalTime)
-    trovato |= processaOrdiniSospeso(node->left);
-
-    // Ricontrolla la fattibilità dell'ordine
-    if (node->ordine.status == 1) {
-
-        node->ordine.status = calcolaFattibilita(node->ordine.associatedRecipe, node->ordine.ammount);
-        if (node->ordine.status == 1) {
-            trovato = 1; // Segnala che è stato trovato un ordine con fattibilità ricalcolata = 1
-        } else if (node->ordine.status == 0) {
-            preparaOrdine(&node->ordine, node->ordine.associatedRecipe);
-        }
-    }
-
-    // Visita del sottoalbero destro (più grande arrivalTime)
-    trovato |= processaOrdiniSospeso(node->right);
-
-    return trovato; // Restituisce 1 se è stato trovato almeno un ordine con fattibilità ricalcolata = 1, altrimenti 0
+    // Riduci il numero di ordini sospesi
+    ordinazioni->num_ordinazioni_sospese--;
 }
 
+void processaOrdiniSospeso(Ordinazioni *ordinazioni) {
+    int i = 0;
 
+    while (i < ordinazioni->num_ordinazioni_sospese) {
+        Ordine *ordineCorrente = &ordinazioni->sospesi[i];
+
+        if (calcolaFattibilita(ordineCorrente)) {
+            // L'ordine è fattibile, quindi procediamo con la preparazione
+            preparaOrdine(ordineCorrente, ordineCorrente->associatedRecipe);
+
+            // Inserisci l'ordine nell'albero degli ordini pronti
+            InserisciOrdinePronto(ordinazioni, createOrderNode(ordineCorrente));
+
+            // Rimuovi l'ordine dalla lista degli ordini sospesi
+            rimuoviOrdineSospeso(ordinazioni, i);
+        } else {
+            // Se l'ordine non è fattibile, passa all'ordine successivo
+            i++;
+        }
+    }
+}
 
 //=============================FUNZIONI=DI=STAMPA=TESTING==================================
 
-// Funzione per fare una traversata in ordine dell'albero degli ingredienti
-void inOrderIngredientTraversal(const IngredientNode *root) {
-    if (root != NULL) {
-        inOrderIngredientTraversal(root->left);
-        printf("    - %s: %d\n", root->ingrediente, root->quantita);
-        inOrderIngredientTraversal(root->right);
-    }
-}
+// Funzione di testing per iterare nell'albero e stampare il contenuto
+void stampaRicetta(RecipeNode *node, RecipeNode *nil) {
+    if (node != nil) {
+        // Visita ricorsiva del sottoalbero sinistro
+        stampaRicetta(node->left, nil);
 
-// Funzione per fare una traversata in ordine dell'albero delle ricette
-void inOrderRecipeTraversal(const RecipeNode *root) {
-    if (root != NULL) {
-        inOrderRecipeTraversal(root->left);
-
-        // Stampa il nome della ricetta
-        printf("Ricetta: %s (%d Ord sospesi)\n", root->ricetta->nome, root->ricetta->activeOrders);
+        // Stampa delle informazioni del nodo corrente
+        printf("Nome della ricetta: %s\n", node->key);
+        printf("Numero di ingredienti: %d\n", node->num_ingredienti);
         printf("Ingredienti:\n");
-
-        // Stampa gli ingredienti della ricetta
-        inOrderIngredientTraversal(root->ricetta->root);
+        for (int i = 0; i < node->num_ingredienti; i++) {
+            printf("  - %s: %d\n", node->ingredienti[i].ingrediente, node->ingredienti[i].quantita);
+        }
+        printf("Ordini attivi: %d\n", node->activeOrders);
         printf("\n");
 
-        inOrderRecipeTraversal(root->right);
+        // Visita ricorsiva del sottoalbero destro
+        stampaRicetta(node->right, nil);
     }
 }
 
-// Funzione per stampare tutte le ricette nel catalogo
-void printCatalogo(const Catalogo *catalogo) {
+void stampaCatalogo(Catalogo *catalogo) {
+    // Avvia la visita in-order dell'albero a partire dalla radice
+    printf("\n\n>CATALOGO< (%d recipes)\n",catalogo->num_ricette);
+    stampaRicetta(catalogo->root, catalogo->nil);
+}
 
-    printf("\n\n>CATALOGO (%d recipes)<\n",catalogo->num_ricette);
+// Funzione di testing per iterare nell'albero e stampare il contenuto
+void stampaRisorsa(ResourceNode *node, ResourceNode *nil) {
+    if (node != nil) {
+        // Visita ricorsiva del sottoalbero sinistro
+        stampaRisorsa(node->left, nil);
 
-    if (catalogo->root != NULL) {
-        inOrderRecipeTraversal(catalogo->root);
-    } else {
-        printf("Il catalogo è vuoto.\n");
+        // Stampa delle informazioni del nodo corrente
+        printf("Ingrediente: %s MaxGrammi: %d\n", node->key,node->maxGrammi);
+        printf("Numero di lotti: %d\n", node->num_lotti);
+        printf("Lotti:\n");
+        for (int i = 0; i < node->num_lotti; i++) {
+            printf("  - Lotto %d: %d grammi, Scadenza: %d\n", i + 1, node->lotti[i].ammount, node->lotti[i].scadenza);
+        }
+        printf("\n");
+
+        // Visita ricorsiva del sottoalbero destro
+        stampaRisorsa(node->right, nil);
     }
 }
 
-// Funzione per stampare tutti i lotti di un ingrediente
-void stampaLotti(const Lotto *lotto) {
-    if (lotto == NULL) {
-        return;
-    }
-
-    // Traversata in-order dell'albero dei lotti
-    stampaLotti(lotto->left);
-    printf("  Lotto - Quantita: %d grammi, Scadenza: %d\n", lotto->ammount, lotto->scadenza);
-    stampaLotti(lotto->right);
+void stampaMagazzino(Magazzino *magazzino) {
+    // Avvia la visita in-order dell'albero a partire dalla radice
+    printf("\n\n>MAGAZZINO< (%d risorse)\n",magazzino->num_risorse);
+    stampaRisorsa(magazzino->root, magazzino->nil);
 }
 
-// Funzione per stampare gli ingredienti con i loro relativi lotti
-void stampaIngredienti(ResourceNode *nodo) {
-    if (nodo == NULL) {
-        return;
-    }
-
-    // Traversata in-order dell'albero degli ingredienti
-    stampaIngredienti(nodo->left);
-    printf("Ingrediente: %s\n", nodo->nome);
-    printf("  Totale: %d grammi, Numero di lotti: %d\n", nodo->maxGrammi, nodo->num_lotti);
-
-    // Stampa dei lotti per l'ingrediente corrente
-    stampaLotti(nodo->lotti);
-
-    stampaIngredienti(nodo->right);
-}
-
-// Funzione principale per stampare tutti gli ingredienti nel magazzino
-void stampaMagazzino(const Magazzino *magazzino) {
-
-    if (magazzino == NULL || magazzino->ingredienti == NULL) {
-        printf("Il magazzino è vuoto.\n");
-        return;
-    }
-
-    printf("\n\n>MAGAZZINO (%d ingredients)<\n",magazzino->num_ingredienti);
-
-    stampaIngredienti(magazzino->ingredienti);
-}
-
-// Funzione ricorsiva per stampare l'albero
-void printOrderNode(const OrderNode *node) {
-    if (node == NULL) {
-        return;
-    }
-
-    // Visita del sottoalbero sinistro
-    printOrderNode(node->left);
-
-    // Stampa del nodo corrente
-    printf("Nome Ordine: %s\n", node->ordine.nome);
-    printf("Quantita: %d\n", node->ordine.ammount);
-    printf("Peso: %d\n", node->ordine.peso);
-    printf("Status: %d\n", node->ordine.status);
-    printf("Tempo di Arrivo: %d\n", node->ordine.arrivalTime);
-    printf("----------------------------\n");
-
-    // Visita del sottoalbero destro
-    printOrderNode(node->right);
-}
-
-// Funzione principale per stampare tutte le ordinazioni
-void printOrdinazioni(Ordinazioni *ordinazioni) {
-    if (ordinazioni->ordinazioni == NULL) {
-        printf("Nessuna ordinazione disponibile.\n");
-        return;
-    }
-    printf("\n\n>Ordinazioni (%d ordini)<\n",ordinazioni->num_ordinazioni_pronte);
-    printOrderNode(ordinazioni->ordinazioni);
-}
-
-void stampaOrdini(Ordine* ordiniCaricare, int numPacchi) {
-    for (int i = 0; i < numPacchi; i++) {
-        printf("%d %s %d\n", ordiniCaricare[i].arrivalTime,ordiniCaricare[i].nome,ordiniCaricare[i].ammount);
-
+// Funzione per stampare gli ordini sospesi
+void stampaOrdiniSospesi(Ordinazioni *ordinazioni) {
+    printf("Ordini sospesi:\n");
+    for (int i = 0; i < ordinazioni->num_ordinazioni_sospese; i++) {
+        Ordine *ordine = &ordinazioni->sospesi[i];
+        printf("Nome dell'ordine: %s\n", ordine->nome);
+        printf("Quantità richiesta: %d\n", ordine->ammount);
+        printf("Peso: %d\n", ordine->peso);
+        printf("Tempo di arrivo: %d\n", ordine->arrivalTime);
+        printf("Stato: %d\n", ordine->arrivalTime); // Supponendo che il tempo di arrivo rappresenti anche lo stato
+        printf("Ricetta associata: %s\n", ordine->associatedRecipe->key);
+        printf("\n");
     }
 }
+
+// Funzione ricorsiva per stampare gli ordini pronti (in-order traversal)
+void stampaOrdiniPronti(OrderNode *node, OrderNode *nil) {
+    if (node != nil) {
+        // Visita ricorsiva del sottoalbero sinistro
+        stampaOrdiniPronti(node->left, nil);
+
+        // Stampa delle informazioni dell'ordine pronto
+        printf("Nome dell'ordine: %s\n", node->ordinePronto->nome);
+        printf("Quantità richiesta: %d\n", node->ordinePronto->ammount);
+        printf("Peso: %d\n", node->ordinePronto->peso);
+        printf("Tempo di arrivo: %d\n", node->ordinePronto->arrivalTime);
+        printf("Ricetta associata: %s\n", node->ordinePronto->associatedRecipe->key);
+        printf("\n");
+
+        // Visita ricorsiva del sottoalbero destro
+        stampaOrdiniPronti(node->right, nil);
+    }
+}
+
+// Funzione per stampare tutte le ordinazioni
+void stampaOrdinazioni(Ordinazioni *ordinazioni) {
+    printf("\n\n>ORDINAZIONI< (%d sospesi, %d pronti)\n",ordinazioni->num_ordinazioni_sospese,ordinazioni->num_ordinazioni_pronte);
+    stampaOrdiniSospesi(ordinazioni);
+    printf("Ordini pronti:\n");
+    stampaOrdiniPronti(ordinazioni->root, ordinazioni->nil);
+}
+
+
 
 //=========================================CORRIERE=====================================================================
 
@@ -1581,6 +1262,7 @@ void caricaOrdiniInOrder(Ordinazioni *T, OrderNode *nodo, OrderNode *nil, int *c
     if (*caricoCorrente + nodo->ordinePronto->peso <= caricoMassimo) {
         *caricoCorrente += nodo->ordinePronto->peso;
         printf("%d %s %d\n",nodo->ordinePronto->arrivalTime,nodo->ordinePronto->nome,nodo->ordinePronto->peso);
+        nodo->ordinePronto->associatedRecipe->activeOrders--;
         removeLoadedOrder(&ordinazioni, nodo);
     } else {
         return;  // Se il prossimo ordine supera il carico massimo, interrompi
@@ -1591,7 +1273,17 @@ void caricaOrdiniInOrder(Ordinazioni *T, OrderNode *nodo, OrderNode *nil, int *c
 }
 
 void caricaOrdiniSuCorriere() {
+    if(ordinazioni.num_ordinazioni_pronte==0) {
+        printf("camioncino vuoto\n");
+        return;
+    }
     caricaOrdiniInOrder(&ordinazioni, ordinazioni.root, ordinazioni.nil, &corriere.caricoParziale, corriere.caricoMax);
+    if(corriere.caricoParziale==0) {
+        printf("camioncino vuoto\n");
+    }
+    else {
+       corriere.caricoParziale=0;
+    }
 }
 
 //=========================================INPUT========================================================================
@@ -1659,6 +1351,7 @@ void processInput(const char *input) {
 
         // Aggiunta ricetta al ricettario
         InserisciRicetta(&catalogo, nuovaRicetta);
+        aggiornaRicetteAssociate(&ordinazioni,&catalogo);
         printf("aggiunta\n");
 
         // Libera memoria temporanea
@@ -1688,7 +1381,7 @@ void processInput(const char *input) {
         }
 
         RimuoviRicetta(recipeToKill);
-        updateOrderRecipeIndex(&ordinazionicatalogo.root); //TODO modificare
+        aggiornaRicetteAssociate(&ordinazioni,&catalogo);
         free(input_copy);
         printf("rimossa\n");
         return;
@@ -1731,7 +1424,7 @@ void processInput(const char *input) {
         free(input_copy2);
         printf("rifornito\n");
 
-        processaOrdiniSospeso(ordinazioni.ordinazioni); //TODO
+        processaOrdiniSospeso(&ordinazioni);
 
         return;
     }
@@ -1834,11 +1527,10 @@ int main() {
         if (tempo % timeSpedizioni == 0 && tempo != 0) {
             // processa il corriere
             caricaOrdiniSuCorriere();
+
         }
 
-        //printf("Verifico la scadenza di tutti gli ingredienti)
-        verificaScadenza(magazzino.ingredienti,tempo);
-        verificaQuantita(magazzino.ingredienti);
+        verificaScadenza();
 
         // Processa input
         processInput(buffer);
@@ -1846,8 +1538,7 @@ int main() {
         tempo++;
     }
 
-    verificaScadenza(magazzino.ingredienti,tempo);
-    verificaQuantita(magazzino.ingredienti);
+    verificaScadenza();
 
     if (tempo % timeSpedizioni == 0 && tempo != 0) {
         // processa il corriere
@@ -1859,12 +1550,9 @@ int main() {
 
     // Stampa in ordine del ricettario
 
-    //printCatalogo(&catalogo);
-   // stampaMagazzino(&magazzino);
-
-
-    //Stampa tutte le ordinazioni
-    //printOrdinazioni(&ordinazioni);
+    stampaCatalogo(&catalogo);
+    stampaMagazzino(&magazzino);
+    stampaOrdinazioni(&ordinazioni);
 
     fclose(file);
 
