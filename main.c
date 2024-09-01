@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 #include <time.h>
 
 #define MAX_NAME_LENGTH 255
@@ -493,27 +492,40 @@ RecipeNode* RimuoviRicetta(RecipeNode *z) {
 
 //==========================FUNZIONI=ALBERO=ORDINI===================================
 
-Ordine* createOrdine( char *nome, int ammount, RecipeNode *associatedRecipe) {
+Ordine* createOrdine(char *nome, int ammount, RecipeNode *associatedRecipe) {
     Ordine *newOrder = (Ordine *)malloc(sizeof(Ordine));
 
-    newOrder->nome = nome;
+    // Alloca memoria e copia il nome della ricetta
+    newOrder->nome = strdup(nome);
+
     newOrder->ammount = ammount;
     newOrder->arrivalTime = tempo;
     newOrder->associatedRecipe = associatedRecipe;
-    newOrder->peso = calcolaPeso(associatedRecipe)*ammount;
+    newOrder->peso = calcolaPeso(associatedRecipe) * ammount;
 
     return newOrder;
 }
 
-OrderNode* createOrderNode(Ordine* ordine){
-    // Allocazione della memoria per il nuovo nodo della ricetta
+
+OrderNode* createOrderNode(Ordine* ordineOriginale) {
+    // Allocazione della memoria per il nuovo nodo dell'ordine
     OrderNode* orderNode = (OrderNode*)malloc(sizeof(OrderNode));
 
     // Assegnazione della chiave (tempo arrivo)
-    orderNode->key = ordine->arrivalTime;  // Duplica la stringa per la chiave
+    orderNode->key = ordineOriginale->arrivalTime;
 
-    // Assegnazione degli ingredienti e il numero di ingredienti
-    orderNode->ordinePronto = ordine;
+    // Creazione di una copia profonda dell'ordine
+    Ordine* ordineCopia = (Ordine*)malloc(sizeof(Ordine));
+
+    // Copia dei campi dell'ordine
+    ordineCopia->nome = strdup(ordineOriginale->nome); // Duplica il nome della ricetta
+    ordineCopia->ammount = ordineOriginale->ammount;
+    ordineCopia->arrivalTime = ordineOriginale->arrivalTime;
+    ordineCopia->associatedRecipe = ordineOriginale->associatedRecipe;
+    ordineCopia->peso = ordineOriginale->peso;
+
+    // Assegnazione dell'ordine copiato al nodo
+    orderNode->ordinePronto = ordineCopia;
 
     // Inizializzazione degli attributi del nodo
     orderNode->color = RED;  // Colore iniziale del nodo (RED)
@@ -521,6 +533,7 @@ OrderNode* createOrderNode(Ordine* ordine){
 
     return orderNode;
 }
+
 
 void inserisciOrdineSospeso(Ordine* ordine)
 {
@@ -630,27 +643,25 @@ void InserisciOrdinePronto(Ordinazioni *T, OrderNode *z) {
     OrderNode *y = T->nil;       // y è il padre del nodo considerato
     OrderNode *x = T->root;      // x è il nodo considerato (inizialmente la radice)
 
-    while (x != T->nil) {         // Trova la posizione corretta per il nuovo nodo z
+    while (x != T->nil) {        // Trova la posizione corretta per il nuovo nodo z
         y = x;
 
-        // Confronta prima il peso, in caso di parità confronta il tempo di arrivo
-        if (z->ordinePronto->peso < x->ordinePronto->peso ||
-           (z->ordinePronto->peso == x->ordinePronto->peso && z->ordinePronto->arrivalTime < x->ordinePronto->arrivalTime)) {
-            x = x->left;          // Se z ha un peso minore o stesso peso ma arrivo precedente, va a sinistra
-           } else {
-               x = x->right;         // Altrimenti, va a destra
-           }
+        // Confronta solo il tempo di arrivo (in ordine decrescente)
+        if (z->ordinePronto->arrivalTime > x->ordinePronto->arrivalTime) {
+            x = x->left;         // Se z ha un arrivo successivo, va a sinistra
+        } else {
+            x = x->right;        // Altrimenti, va a destra
+        }
     }
 
     z->parent = y;                // Collega il genitore al nuovo nodo z
     if (y == T->nil) {
         T->root = z;              // Se l'albero è vuoto, z diventa la radice
-    } else if (z->ordinePronto->peso < y->ordinePronto->peso ||
-              (z->ordinePronto->peso == y->ordinePronto->peso && z->ordinePronto->arrivalTime < y->ordinePronto->arrivalTime)) {
-        y->left = z;              // Se z ha un peso minore o stesso peso ma arrivo precedente, diventa figlio sinistro
-              } else {
-                  y->right = z;             // Altrimenti, diventa figlio destro
-              }
+    } else if (z->ordinePronto->arrivalTime > y->ordinePronto->arrivalTime) {
+        y->left = z;              // Se z ha un arrivo successivo, diventa figlio sinistro
+    } else {
+        y->right = z;             // Altrimenti, diventa figlio destro
+    }
 
     z->left = T->nil;             // Imposta i figli di z al nodo sentinella NIL
     z->right = T->nil;
@@ -658,6 +669,7 @@ void InserisciOrdinePronto(Ordinazioni *T, OrderNode *z) {
 
     OrdinazioneInsertFix(T, z);   // Effettua il fixup per mantenere le proprietà dell'albero rosso-nero
 }
+
 
 OrderNode* treeMinimumOrder(OrderNode *x) {
     while (x->left != ordinazioni.nil) {
@@ -780,6 +792,7 @@ void removeLoadedOrder(Ordinazioni *T, OrderNode *z) {
 
     // Libera la memoria del nodo y
     free(y);  // Dealloca il nodo y
+    T->num_ordinazioni_pronte--;
 }
 
 
@@ -1016,6 +1029,7 @@ void clean_lots(ResourceNode *node, ResourceNode *nil, int current_time) {
     while (i < node->num_lotti) {
         if (node->lotti[i].scadenza <= current_time || node->lotti[i].ammount == 0) {
             // Rimuove il lotto spostando gli elementi successivi indietro
+            node->maxGrammi -= node->lotti[i].ammount;
             for (int j = i; j < node->num_lotti - 1; j++) {
                 node->lotti[j] = node->lotti[j + 1];
             }
@@ -1025,13 +1039,14 @@ void clean_lots(ResourceNode *node, ResourceNode *nil, int current_time) {
             if (node->num_lotti == 0) {
                 free(node->lotti);
                 node->lotti = NULL;
+                break;
             } else {
                 // Ridimensiona l'array dei lotti
                 node->lotti = realloc(node->lotti, node->num_lotti * sizeof(Lotto));
             }
         } else {
-            // Se trova un lotto non scaduto e con quantità > 0, interrompe il controllo e passa al nodo successivo
-            break;
+            // Solo se non rimuovi un lotto, incrementi l'indice
+            i++;
         }
     }
 
@@ -1039,6 +1054,7 @@ void clean_lots(ResourceNode *node, ResourceNode *nil, int current_time) {
     clean_lots(node->left, nil, current_time);
     clean_lots(node->right, nil, current_time);
 }
+
 
 void verificaScadenza() {
     clean_lots(magazzino.root, magazzino.nil, tempo);
@@ -1209,7 +1225,7 @@ void stampaOrdiniSospesi(Ordinazioni *ordinazioni) {
     for (int i = 0; i < ordinazioni->num_ordinazioni_sospese; i++) {
         Ordine *ordine = &ordinazioni->sospesi[i];
         printf("Nome dell'ordine: %s\n", ordine->nome);
-        printf("Quantità richiesta: %d\n", ordine->ammount);
+        printf("Quantita richiesta: %d\n", ordine->ammount);
         printf("Peso: %d\n", ordine->peso);
         printf("Tempo di arrivo: %d\n", ordine->arrivalTime);
         printf("Stato: %d\n", ordine->arrivalTime); // Supponendo che il tempo di arrivo rappresenti anche lo stato
@@ -1226,7 +1242,7 @@ void stampaOrdiniPronti(OrderNode *node, OrderNode *nil) {
 
         // Stampa delle informazioni dell'ordine pronto
         printf("Nome dell'ordine: %s\n", node->ordinePronto->nome);
-        printf("Quantità richiesta: %d\n", node->ordinePronto->ammount);
+        printf("Quantita richiesta: %d\n", node->ordinePronto->ammount);
         printf("Peso: %d\n", node->ordinePronto->peso);
         printf("Tempo di arrivo: %d\n", node->ordinePronto->arrivalTime);
         printf("Ricetta associata: %s\n", node->ordinePronto->associatedRecipe->key);
@@ -1249,41 +1265,76 @@ void stampaOrdinazioni(Ordinazioni *ordinazioni) {
 
 //=========================================CORRIERE=====================================================================
 
-
-void caricaOrdiniInOrder(Ordinazioni *T, OrderNode *nodo, OrderNode *nil, int *caricoCorrente, int caricoMassimo) {
-    if (nodo == nil || *caricoCorrente + nodo->ordinePronto->peso > caricoMassimo) {
+void caricaOrdiniInOrder(Ordinazioni *T, OrderNode *nodo, OrderNode *nil, int *caricoCorrente, int caricoMassimo, OrderNode **toRemoveList, int *toRemoveCount) {
+    if (nodo == nil || *caricoCorrente >= caricoMassimo) {
         return;
     }
 
-    //Visita il sottoalbero sinistro
-    caricaOrdiniInOrder(T, nodo->left, nil, caricoCorrente, caricoMassimo);
+    // Visita il sottoalbero sinistro prima (perché vogliamo estrarre in ordine crescente di arrivalTime)
+    caricaOrdiniInOrder(T, nodo->left, nil, caricoCorrente, caricoMassimo, toRemoveList, toRemoveCount);
 
     // Gestisci il nodo corrente
     if (*caricoCorrente + nodo->ordinePronto->peso <= caricoMassimo) {
         *caricoCorrente += nodo->ordinePronto->peso;
-        printf("%d %s %d\n",nodo->ordinePronto->arrivalTime,nodo->ordinePronto->nome,nodo->ordinePronto->peso);
-        nodo->ordinePronto->associatedRecipe->activeOrders--;
-        removeLoadedOrder(&ordinazioni, nodo);
-    } else {
-        return;  // Se il prossimo ordine supera il carico massimo, interrompi
-    }
+        toRemoveList[(*toRemoveCount)++] = nodo;
 
-    // Visita il sottoalbero destro
-    caricaOrdiniInOrder(T, nodo->right, nil, caricoCorrente, caricoMassimo);
+        // Visita il sottoalbero destro dopo aver gestito il nodo corrente
+        caricaOrdiniInOrder(T, nodo->right, nil, caricoCorrente, caricoMassimo, toRemoveList, toRemoveCount);
+    }
 }
 
+int compareOrders(const void *a, const void *b) {
+    OrderNode orderA = *(OrderNode *)a;
+    OrderNode orderB = *(OrderNode *)b;
+
+    if (orderA.ordinePronto->peso != orderB.ordinePronto->peso) {
+        return orderB.ordinePronto->peso - orderA.ordinePronto->peso; // Peso decrescente
+    } else {
+        return orderA.ordinePronto->arrivalTime - orderB.ordinePronto->arrivalTime; // Arrival time crescente
+    }
+}
+
+void rimuoviOrdini(Ordinazioni *T, OrderNode **toRemoveList, int toRemoveCount) {
+    // Ordina toRemoveList secondo il criterio richiesto
+    qsort(toRemoveList, toRemoveCount, sizeof(OrderNode *), compareOrders);
+
+    // Stampa gli ordini ordinati prima di rimuoverli
+    for (int i = 0; i < toRemoveCount; i++) {
+        OrderNode *nodo = toRemoveList[i];
+        printf("%d %s %d\n", nodo->ordinePronto->arrivalTime, nodo->ordinePronto->nome, nodo->ordinePronto->ammount);
+        nodo->ordinePronto->associatedRecipe->activeOrders--;
+    }
+
+    // Rimuovi i nodi ordinati dall'albero
+    for (int i = 0; i < toRemoveCount; i++) {
+        removeLoadedOrder(T, toRemoveList[i]);
+    }
+}
+
+void gestisciOrdini(Ordinazioni *T, int caricoMassimo) {
+    int caricoCorrente = 0;
+    OrderNode *toRemoveList[2000];  // Array per accumulare nodi da rimuovere
+    int toRemoveCount = 0;
+
+    // Carica ordini in base al tempo di arrivo (crescente) e accumula i nodi da rimuovere
+    caricaOrdiniInOrder(T, T->root, T->nil, &caricoCorrente, caricoMassimo, toRemoveList, &toRemoveCount);
+
+    // Ordina, stampa e rimuovi i nodi accumulati
+    rimuoviOrdini(T, toRemoveList, toRemoveCount);
+}
+
+
+
 void caricaOrdiniSuCorriere() {
-    if(ordinazioni.num_ordinazioni_pronte==0) {
+    if(ordinazioni.num_ordinazioni_pronte==0)
+    {
         printf("camioncino vuoto\n");
         return;
     }
-    caricaOrdiniInOrder(&ordinazioni, ordinazioni.root, ordinazioni.nil, &corriere.caricoParziale, corriere.caricoMax);
-    if(corriere.caricoParziale==0) {
-        printf("camioncino vuoto\n");
-    }
-    else {
-       corriere.caricoParziale=0;
-    }
+
+    gestisciOrdini(&ordinazioni, corriere.caricoMax);
+
+
 }
 
 //=========================================INPUT========================================================================
@@ -1477,14 +1528,12 @@ int main() {
 
     //TODO
     // Usa stdin come file di input
-    //  FILE *file = stdin;
-    // //
+     //FILE *file = stdin;
+
     // // Usa stdout come file di output
-    // FILE *file2 = stdout;
-    //
+     //FILE *file2 = stdout;
 
-
-    FILE *file = fopen("example.txt", "r");
+    FILE *file = fopen("open1.txt", "r");
     FILE *file2 = fopen("TestOut.txt", "w");
 
     if (file == NULL) {
@@ -1535,6 +1584,8 @@ int main() {
         // Processa input
         processInput(buffer);
 
+
+
         tempo++;
     }
 
@@ -1550,9 +1601,9 @@ int main() {
 
     // Stampa in ordine del ricettario
 
-    stampaCatalogo(&catalogo);
-    stampaMagazzino(&magazzino);
-    stampaOrdinazioni(&ordinazioni);
+    //stampaCatalogo(&catalogo);
+    //stampaMagazzino(&magazzino);
+    //stampaOrdinazioni(&ordinazioni);
 
     fclose(file);
 
