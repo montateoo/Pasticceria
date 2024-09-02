@@ -647,7 +647,7 @@ void InserisciOrdinePronto(Ordinazioni *T, OrderNode *z) {
         y = x;
 
         // Confronta solo il tempo di arrivo (in ordine decrescente)
-        if (z->ordinePronto->arrivalTime > x->ordinePronto->arrivalTime) {
+        if (z->ordinePronto->arrivalTime < x->ordinePronto->arrivalTime) {
             x = x->left;         // Se z ha un arrivo successivo, va a sinistra
         } else {
             x = x->right;        // Altrimenti, va a destra
@@ -657,7 +657,7 @@ void InserisciOrdinePronto(Ordinazioni *T, OrderNode *z) {
     z->parent = y;                // Collega il genitore al nuovo nodo z
     if (y == T->nil) {
         T->root = z;              // Se l'albero è vuoto, z diventa la radice
-    } else if (z->ordinePronto->arrivalTime > y->ordinePronto->arrivalTime) {
+    } else if (z->ordinePronto->arrivalTime < y->ordinePronto->arrivalTime) {
         y->left = z;              // Se z ha un arrivo successivo, diventa figlio sinistro
     } else {
         y->right = z;             // Altrimenti, diventa figlio destro
@@ -1045,8 +1045,8 @@ void clean_lots(ResourceNode *node, ResourceNode *nil, int current_time) {
                 node->lotti = realloc(node->lotti, node->num_lotti * sizeof(Lotto));
             }
         } else {
-            // Solo se non rimuovi un lotto, incrementi l'indice
-            i++;
+            // Lotto valido trovato, esce dal ciclo
+            break;
         }
     }
 
@@ -1054,6 +1054,7 @@ void clean_lots(ResourceNode *node, ResourceNode *nil, int current_time) {
     clean_lots(node->left, nil, current_time);
     clean_lots(node->right, nil, current_time);
 }
+
 
 
 void verificaScadenza() {
@@ -1079,7 +1080,7 @@ int calcolaFattibilita(const Ordine *orderToProcess) {
         }
 
         // Verifica se la quantità disponibile è sufficiente
-        if (ingredienteMagazzino->maxGrammi < ingredienteNecessario.quantita * orderToProcess->ammount) {
+        if (ingredienteMagazzino->maxGrammi <= ingredienteNecessario.quantita * orderToProcess->ammount) {
             // Se la quantità non è sufficiente, restituisce false
             return 0;
         }
@@ -1101,6 +1102,7 @@ void consumaLottiPerScadenza(Lotto *lotti, int num_lotti, int *grammiRichiesti, 
             nodoLotto->ammount -= *grammiRichiesti;
             *maxGrammi -= *grammiRichiesti;
             *grammiRichiesti = 0; // Tutto soddisfatto, interrompi il loop
+            break;
         } else {
             *grammiRichiesti -= nodoLotto->ammount;
             *maxGrammi -= nodoLotto->ammount;
@@ -1149,6 +1151,9 @@ void processaOrdiniSospeso(Ordinazioni *ordinazioni) {
         Ordine *ordineCorrente = &ordinazioni->sospesi[i];
 
         if (calcolaFattibilita(ordineCorrente)) {
+
+            printf("t: %d Ordine %s in preparazione qta: %d\n", ordineCorrente->arrivalTime ,ordineCorrente->nome,ordineCorrente->ammount);
+
             // L'ordine è fattibile, quindi procediamo con la preparazione
             preparaOrdine(ordineCorrente, ordineCorrente->associatedRecipe);
 
@@ -1265,34 +1270,59 @@ void stampaOrdinazioni(Ordinazioni *ordinazioni) {
 
 //=========================================CORRIERE=====================================================================
 
-void caricaOrdiniInOrder(Ordinazioni *T, OrderNode *nodo, OrderNode *nil, int *caricoCorrente, int caricoMassimo, OrderNode **toRemoveList, int *toRemoveCount) {
-    if (nodo == nil || *caricoCorrente >= caricoMassimo) {
+
+void caricaOrdiniInOrder(Ordinazioni *T, OrderNode *nodo, OrderNode *nil, int *caricoCorrente, int caricoMassimo, OrderNode **toRemoveList, int *toRemoveCount, int *terminaEsecuzione) {
+    // Se il nodo è nullo, abbiamo raggiunto una foglia e ritorniamo
+    if (nodo == nil) {
         return;
     }
 
-    // Visita il sottoalbero sinistro prima (perché vogliamo estrarre in ordine crescente di arrivalTime)
-    caricaOrdiniInOrder(T, nodo->left, nil, caricoCorrente, caricoMassimo, toRemoveList, toRemoveCount);
-
-    // Gestisci il nodo corrente
-    if (*caricoCorrente + nodo->ordinePronto->peso <= caricoMassimo) {
-        *caricoCorrente += nodo->ordinePronto->peso;
-        toRemoveList[(*toRemoveCount)++] = nodo;
-
-        // Visita il sottoalbero destro dopo aver gestito il nodo corrente
-        caricaOrdiniInOrder(T, nodo->right, nil, caricoCorrente, caricoMassimo, toRemoveList, toRemoveCount);
+    // Se il flag di terminazione è impostato, interrompiamo l'esecuzione
+    if (*terminaEsecuzione == 1) {
+        return;
     }
+
+    // Visita il sottoalbero sinistro prima
+    caricaOrdiniInOrder(T, nodo->left, nil, caricoCorrente, caricoMassimo, toRemoveList, toRemoveCount, terminaEsecuzione);
+
+    // Controllo dopo la ricorsione sul sottoalbero sinistro per verificare se il flag di terminazione è stato impostato
+    if (*terminaEsecuzione == 1) {
+        return;
+    }
+
+    // Controlla se aggiungendo il peso del nodo corrente si supera il carico massimo
+    if (*caricoCorrente + nodo->ordinePronto->peso > caricoMassimo) {
+        // Imposta il flag per terminare l'esecuzione
+        *terminaEsecuzione = 1;
+        return;
+    }
+
+    // Gestisci il nodo corrente (solo se non è stato superato il carico massimo)
+    *caricoCorrente += nodo->ordinePronto->peso;
+    toRemoveList[(*toRemoveCount)++] = nodo;
+
+    // Visita il sottoalbero destro dopo aver gestito il nodo corrente
+    caricaOrdiniInOrder(T, nodo->right, nil, caricoCorrente, caricoMassimo, toRemoveList, toRemoveCount, terminaEsecuzione);
 }
+
+
+
+
 
 int compareOrders(const void *a, const void *b) {
-    OrderNode orderA = *(OrderNode *)a;
-    OrderNode orderB = *(OrderNode *)b;
+    // Cast dei puntatori ai tipi corretti
+    const OrderNode *orderA = *(const OrderNode **)a;
+    const OrderNode *orderB = *(const OrderNode **)b;
 
-    if (orderA.ordinePronto->peso != orderB.ordinePronto->peso) {
-        return orderB.ordinePronto->peso - orderA.ordinePronto->peso; // Peso decrescente
-    } else {
-        return orderA.ordinePronto->arrivalTime - orderB.ordinePronto->arrivalTime; // Arrival time crescente
+    // Confronta i pesi in ordine decrescente
+    if (orderA->ordinePronto->peso != orderB->ordinePronto->peso) {
+        return orderB->ordinePronto->peso - orderA->ordinePronto->peso;
     }
+
+    // Confronta i tempi di arrivo in ordine crescente
+    return orderA->ordinePronto->arrivalTime - orderB->ordinePronto->arrivalTime;
 }
+
 
 void rimuoviOrdini(Ordinazioni *T, OrderNode **toRemoveList, int toRemoveCount) {
     // Ordina toRemoveList secondo il criterio richiesto
@@ -1301,7 +1331,7 @@ void rimuoviOrdini(Ordinazioni *T, OrderNode **toRemoveList, int toRemoveCount) 
     // Stampa gli ordini ordinati prima di rimuoverli
     for (int i = 0; i < toRemoveCount; i++) {
         OrderNode *nodo = toRemoveList[i];
-        printf("%d %s %d\n", nodo->ordinePronto->arrivalTime, nodo->ordinePronto->nome, nodo->ordinePronto->ammount);
+        printf("%d %s %d peso: %d\n", nodo->ordinePronto->arrivalTime, nodo->ordinePronto->nome, nodo->ordinePronto->ammount, nodo->ordinePronto->peso);
         nodo->ordinePronto->associatedRecipe->activeOrders--;
     }
 
@@ -1311,13 +1341,15 @@ void rimuoviOrdini(Ordinazioni *T, OrderNode **toRemoveList, int toRemoveCount) 
     }
 }
 
+
 void gestisciOrdini(Ordinazioni *T, int caricoMassimo) {
     int caricoCorrente = 0;
     OrderNode *toRemoveList[2000];  // Array per accumulare nodi da rimuovere
     int toRemoveCount = 0;
 
     // Carica ordini in base al tempo di arrivo (crescente) e accumula i nodi da rimuovere
-    caricaOrdiniInOrder(T, T->root, T->nil, &caricoCorrente, caricoMassimo, toRemoveList, &toRemoveCount);
+    int terminaEsecuzione = 0;
+    caricaOrdiniInOrder(T, T->root, T->nil, &caricoCorrente, caricoMassimo, toRemoveList, &toRemoveCount, &terminaEsecuzione);
 
     // Ordina, stampa e rimuovi i nodi accumulati
     rimuoviOrdini(T, toRemoveList, toRemoveCount);
@@ -1336,6 +1368,7 @@ void caricaOrdiniSuCorriere() {
 
 
 }
+
 
 //=========================================INPUT========================================================================
 // Funzione per processare l'input
@@ -1495,9 +1528,11 @@ void processInput(const char *input) {
             if(calcolaFattibilita(nuovoOrdine)) {
                 preparaOrdine(nuovoOrdine, associatedRecipe);
                 InserisciOrdinePronto(&ordinazioni,createOrderNode(nuovoOrdine));
+                printf("preparato\n");
             }else
             {
                 inserisciOrdineSospeso(nuovoOrdine);
+                printf("sospeso\n");
             }
 
             associatedRecipe->activeOrders++;
@@ -1533,7 +1568,7 @@ int main() {
     // // Usa stdout come file di output
      //FILE *file2 = stdout;
 
-    FILE *file = fopen("open1.txt", "r");
+    FILE *file = fopen("open4.txt", "r");
     FILE *file2 = fopen("TestOut.txt", "w");
 
     if (file == NULL) {
@@ -1575,6 +1610,7 @@ int main() {
 
         if (tempo % timeSpedizioni == 0 && tempo != 0) {
             // processa il corriere
+            printf("Carico Max: %d\n",corriere.caricoMax);
             caricaOrdiniSuCorriere();
 
         }
@@ -1584,8 +1620,6 @@ int main() {
         // Processa input
         processInput(buffer);
 
-
-
         tempo++;
     }
 
@@ -1593,7 +1627,7 @@ int main() {
 
     if (tempo % timeSpedizioni == 0 && tempo != 0) {
         // processa il corriere
-        caricaOrdiniSuCorriere();
+      caricaOrdiniSuCorriere();
     }
 
     // Chiusura del file di output
