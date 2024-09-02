@@ -103,6 +103,8 @@ Corriere corriere = {0,0,0};
 //quanti di tempo
 int tempo = 0;
 
+void stampaIngredientiRicetta(Catalogo *catalogo, Magazzino *magazzino, char *nomeRicetta);
+
 //==========================Funzioni=Di=Inizializzazione=Alberi===================================
 void initCatalogo(Catalogo *T) {
     // Allocazione memoria per il nodo sentinella nil
@@ -380,6 +382,7 @@ RecipeNode* treeSuccessor(RecipeNode *x) {
     return y;
 }
 
+
 void RicettaDeleteFix(Catalogo *T, RecipeNode *x) {
     RecipeNode *w;
 
@@ -466,7 +469,7 @@ RecipeNode* RimuoviRicetta(RecipeNode *z) {
     if (y != z) {
         // Libera la vecchia chiave e lista di ingredienti di z
         free(z->key);  // Libera la vecchia chiave di z
-        liberaRecipeNode(z); // Libera la lista di ingredienti di z
+       // liberaRecipeNode(z); // Libera la lista di ingredienti di z
 
         // Copia i dati di y in z
         z->key = strdup(y->key); // Copia della chiave (nome ricetta)
@@ -480,7 +483,7 @@ RecipeNode* RimuoviRicetta(RecipeNode *z) {
     }
 
     // Libera la chiave e la memoria di y prima di deallocarlo
-    liberaRecipeNode(y); // Libera la lista di ingredienti di y
+   // liberaRecipeNode(y); // Libera la lista di ingredienti di y
     free(y->key);       // Libera la chiave di y
     free(y);             // Dealloca il nodo y
 
@@ -776,8 +779,9 @@ void removeLoadedOrder(Ordinazioni *T, OrderNode *z) {
 
     if (y != z) {
         // Libera la memoria dell'ordine associato a z
-        if (z->ordinePronto) {
+        if (z->ordinePronto != NULL) {
             free(z->ordinePronto->nome);  // Libera il nome dell'ordine
+            z->ordinePronto->associatedRecipe = NULL;  // Rimuove la referenza alla ricetta
             free(z->ordinePronto);  // Libera la struttura Ordine
         }
 
@@ -794,6 +798,10 @@ void removeLoadedOrder(Ordinazioni *T, OrderNode *z) {
     free(y);  // Dealloca il nodo y
     T->num_ordinazioni_pronte--;
 }
+
+
+
+
 
 
 // Dichiarazione della funzione helper
@@ -863,28 +871,42 @@ ResourceNode* cercaIngredienteMagazzino(ResourceNode *x, char *key) {
 }
 
 void inserisciLottoMagazzino(ResourceNode *nodo, int quantita, int scadenza) {
-    // Cerca se esiste già un lotto con la stessa data di scadenza
-    for (int i = 0; i < nodo->num_lotti; i++) {
-        if (nodo->lotti[i].scadenza == scadenza) {
-            // Se esiste, somma la quantità al lotto esistente
-            nodo->lotti[i].ammount += quantita;
+    // Ricerca binaria per trovare la posizione di inserimento
+    int left = 0;
+    int right = nodo->num_lotti - 1;
+    int mid;
+    int insert_pos = nodo->num_lotti;
+
+    while (left <= right) {
+        mid = left + (right - left) / 2;
+
+        if (nodo->lotti[mid].scadenza == scadenza) {
+            // Lotto con la stessa scadenza trovato, somma la quantità
+            nodo->lotti[mid].ammount += quantita;
             nodo->maxGrammi += quantita;
             return;
+        } else if (nodo->lotti[mid].scadenza < scadenza) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
         }
     }
 
-    // Se non esiste un lotto con la stessa data di scadenza,
-    // alloca spazio per un nuovo array di lotti (uno in più)
+    // Se non è stato trovato un lotto con la stessa scadenza,
+    // la posizione di inserimento sarà left.
+    insert_pos = left;
+
+    // Alloca spazio per un nuovo lotto
     nodo->lotti = realloc(nodo->lotti, (nodo->num_lotti + 1) * sizeof(Lotto));
 
-    int i;
-    for (i = nodo->num_lotti; i > 0 && nodo->lotti[i-1].scadenza > scadenza; i--) {
-        nodo->lotti[i] = nodo->lotti[i-1]; // Sposta i lotti esistenti per fare spazio
+    // Sposta i lotti per fare spazio al nuovo lotto
+    for (int i = nodo->num_lotti; i > insert_pos; i--) {
+        nodo->lotti[i] = nodo->lotti[i - 1];
     }
 
     // Inserisci il nuovo lotto nella posizione corretta
-    nodo->lotti[i].ammount = quantita;
-    nodo->lotti[i].scadenza = scadenza;
+    nodo->lotti[insert_pos].ammount = quantita;
+    nodo->lotti[insert_pos].scadenza = scadenza;
 
     // Incrementa il numero di lotti
     nodo->num_lotti++;
@@ -892,6 +914,7 @@ void inserisciLottoMagazzino(ResourceNode *nodo, int quantita, int scadenza) {
     // Aggiorna il totale degli ingredienti
     nodo->maxGrammi += quantita;
 }
+
 
 void leftRotateResource(Magazzino *T, ResourceNode *x) {
     ResourceNode *y = x->right;           // y viene settato come il figlio destro di x
@@ -1080,7 +1103,7 @@ int calcolaFattibilita(const Ordine *orderToProcess) {
         }
 
         // Verifica se la quantità disponibile è sufficiente
-        if (ingredienteMagazzino->maxGrammi <= ingredienteNecessario.quantita * orderToProcess->ammount) {
+        if (ingredienteMagazzino->maxGrammi < ingredienteNecessario.quantita * orderToProcess->ammount) {
             // Se la quantità non è sufficiente, restituisce false
             return 0;
         }
@@ -1117,6 +1140,8 @@ void consumaLottiPerScadenza(Lotto *lotti, int num_lotti, int *grammiRichiesti, 
 void preparaOrdine(Ordine *nuovoOrdine, RecipeNode *Recipe ) {
     RecipeNode *associatedRecipe = Recipe;
 
+       // printf("Ordine: %s Ricetta: %s correttezza(%d)\n",nuovoOrdine->nome,associatedRecipe->key,strcmp(nuovoOrdine->nome,associatedRecipe->key));
+
         // Itera attraverso gli ingredienti della ricetta
         for (int i = 0; i < associatedRecipe->num_ingredienti; i++) {
             Ingrediente *ingredienteCorrente = &associatedRecipe->ingredienti[i];
@@ -1152,8 +1177,8 @@ void processaOrdiniSospeso(Ordinazioni *ordinazioni) {
 
         if (calcolaFattibilita(ordineCorrente)) {
 
-            printf("t: %d Ordine %s in preparazione qta: %d\n", ordineCorrente->arrivalTime ,ordineCorrente->nome,ordineCorrente->ammount);
-
+            //printf("t: %d Ordine %s in preparazione qta: %d\n", ordineCorrente->arrivalTime ,ordineCorrente->nome,ordineCorrente->ammount);
+            //stampaIngredientiRicetta(&catalogo,&magazzino,ordineCorrente->nome);
             // L'ordine è fattibile, quindi procediamo con la preparazione
             preparaOrdine(ordineCorrente, ordineCorrente->associatedRecipe);
 
@@ -1167,6 +1192,29 @@ void processaOrdiniSospeso(Ordinazioni *ordinazioni) {
             i++;
         }
     }
+}
+
+// Funzione ricorsiva per deallocare un albero rosso-nero
+void TuttiOrdiniSpediti(OrderNode *node, OrderNode *nil) {
+    if (node != nil) {
+        TuttiOrdiniSpediti(node->left, nil);  // Dealloca il sottoalbero sinistro
+        TuttiOrdiniSpediti(node->right, nil); // Dealloca il sottoalbero destro
+
+        // Dealloca l'ordine associato al nodo
+        free(node->ordinePronto->nome);             // Dealloca il nome
+        free(node->ordinePronto);                   // Dealloca l'ordine stesso
+        free(node);                                 // Dealloca il nodo
+    }
+}
+
+// Funzione per deallocare l'albero partendo dalla radice
+void SpedizioneTotale(Ordinazioni *ordinazioni) {
+    if (ordinazioni->root != ordinazioni->nil) {
+        TuttiOrdiniSpediti(ordinazioni->root, ordinazioni->nil);
+    }
+
+    // Reset delle variabili
+    ordinazioni->root = ordinazioni->nil;
 }
 
 //=============================FUNZIONI=DI=STAMPA=TESTING==================================
@@ -1266,6 +1314,38 @@ void stampaOrdinazioni(Ordinazioni *ordinazioni) {
     stampaOrdiniPronti(ordinazioni->root, ordinazioni->nil);
 }
 
+// Funzione per stampare tutti gli ingredienti con i relativi lotti di una ricetta
+void stampaIngredientiRicetta(Catalogo *catalogo, Magazzino *magazzino, char *nomeRicetta) {
+    // Cerca la ricetta nel catalogo
+    RecipeNode *ricetta = cercaRicetta(catalogo->root, nomeRicetta);
+
+    if (ricetta == catalogo->nil) {
+        printf("Ricetta non trovata: %s\n", nomeRicetta);
+        return;
+    }
+
+    printf("Ingredienti per la ricetta %s:\n", nomeRicetta);
+
+    // Itera sugli ingredienti della ricetta
+    for (int i = 0; i < ricetta->num_ingredienti; i++) {
+        Ingrediente ingrediente = ricetta->ingredienti[i];
+        ResourceNode *ingredienteMagazzino = cercaIngredienteMagazzino(magazzino->root, ingrediente.ingrediente);
+
+        if (ingredienteMagazzino == magazzino->nil) {
+            printf("  Ingrediente %s non trovato nel magazzino.\n", ingrediente.ingrediente);
+            continue;
+        }
+
+        printf("  Ingrediente: %s, Quantità richiesta: %d grammi\n", ingrediente.ingrediente, ingrediente.quantita);
+
+        // Itera sui lotti disponibili per l'ingrediente
+        for (int j = 0; j < ingredienteMagazzino->num_lotti; j++) {
+            Lotto lotto = ingredienteMagazzino->lotti[j];
+            printf("    Lotto %d - Quantità: %d grammi, Scadenza: %d\n", j + 1, lotto.ammount, lotto.scadenza);
+        }
+    }
+}
+
 
 
 //=========================================CORRIERE=====================================================================
@@ -1323,6 +1403,38 @@ int compareOrders(const void *a, const void *b) {
     return orderA->ordinePronto->arrivalTime - orderB->ordinePronto->arrivalTime;
 }
 
+int* estraiChiaviOrdini(OrderNode **toRemoveList, int toRemoveCount) {
+    // Alloca memoria per l'array delle chiavi
+    int *chiavi = (int *)malloc(toRemoveCount * sizeof(int));
+
+    if (chiavi == NULL) {
+        // Gestione dell'errore di allocazione
+        return NULL;
+    }
+
+    // Riempie l'array delle chiavi
+    for (int i = 0; i < toRemoveCount; i++) {
+        chiavi[i] = toRemoveList[i]->key;
+    }
+
+    return chiavi;
+}
+
+OrderNode* cercaNodoPerChiave(OrderNode *root, int chiave) {
+    OrderNode *corrente = root;
+
+    while (corrente != ordinazioni.nil) {
+        if (chiave == corrente->key) {
+            return corrente; // Nodo trovato
+        } else if (chiave < corrente->key) {
+            corrente = corrente->left; // Vai al sottoalbero sinistro
+        } else {
+            corrente = corrente->right; // Vai al sottoalbero destro
+        }
+    }
+
+    return ordinazioni.nil; // Nodo non trovato
+}
 
 void rimuoviOrdini(Ordinazioni *T, OrderNode **toRemoveList, int toRemoveCount) {
     // Ordina toRemoveList secondo il criterio richiesto
@@ -1331,13 +1443,25 @@ void rimuoviOrdini(Ordinazioni *T, OrderNode **toRemoveList, int toRemoveCount) 
     // Stampa gli ordini ordinati prima di rimuoverli
     for (int i = 0; i < toRemoveCount; i++) {
         OrderNode *nodo = toRemoveList[i];
-        printf("%d %s %d peso: %d\n", nodo->ordinePronto->arrivalTime, nodo->ordinePronto->nome, nodo->ordinePronto->ammount, nodo->ordinePronto->peso);
+        //printf("%d %s %d peso: %d\n", nodo->ordinePronto->arrivalTime, nodo->ordinePronto->nome, nodo->ordinePronto->ammount, nodo->ordinePronto->peso);
+        printf("%d %s %d\n", nodo->ordinePronto->arrivalTime, nodo->ordinePronto->nome, nodo->ordinePronto->ammount);
+
         nodo->ordinePronto->associatedRecipe->activeOrders--;
     }
 
-    // Rimuovi i nodi ordinati dall'albero
-    for (int i = 0; i < toRemoveCount; i++) {
-        removeLoadedOrder(T, toRemoveList[i]);
+    if(toRemoveCount==ordinazioni.num_ordinazioni_pronte)
+    {
+        SpedizioneTotale(&ordinazioni);
+        ordinazioni.num_ordinazioni_pronte = 0;
+    }
+    else
+    {
+        int *chiavi = estraiChiaviOrdini(toRemoveList,toRemoveCount);
+
+        // Rimuovi i nodi ordinati dall'albero
+        for (int i = 0; i < toRemoveCount; i++) {
+            removeLoadedOrder(T, cercaNodoPerChiave(ordinazioni.root,chiavi[i]));
+        }
     }
 }
 
@@ -1464,10 +1588,12 @@ void processInput(const char *input) {
            return;
         }
 
+        //stampaCatalogo(&catalogo);
         RimuoviRicetta(recipeToKill);
         aggiornaRicetteAssociate(&ordinazioni,&catalogo);
         free(input_copy);
         printf("rimossa\n");
+       // stampaCatalogo(&catalogo);
         return;
     }
 
@@ -1508,6 +1634,9 @@ void processInput(const char *input) {
         free(input_copy2);
         printf("rifornito\n");
 
+        //stampaMagazzino(&magazzino);
+
+        //printf("TEMPO ATTUALE %d\n",tempo);
         processaOrdiniSospeso(&ordinazioni);
 
         return;
@@ -1525,18 +1654,27 @@ void processInput(const char *input) {
             printf("accettato\n");
             const int ammount = atoi(strtok(NULL, " "));
             Ordine *nuovoOrdine = createOrdine(nome_ricetta, ammount, associatedRecipe);
+
+
+            //if(tempo==50)
+           // {
+             //   stampaIngredientiRicetta(&catalogo,&magazzino,associatedRecipe->key);
+            //}
+
+           // printf("registrazione Ordine: %s Ricetta: %s correttezza(%d)\n",nuovoOrdine->nome,associatedRecipe->key,strcmp(nuovoOrdine->nome,associatedRecipe->key));
+
+
             if(calcolaFattibilita(nuovoOrdine)) {
                 preparaOrdine(nuovoOrdine, associatedRecipe);
                 InserisciOrdinePronto(&ordinazioni,createOrderNode(nuovoOrdine));
-                printf("preparato\n");
+               // printf("preparato\n");
             }else
             {
                 inserisciOrdineSospeso(nuovoOrdine);
-                printf("sospeso\n");
+               // printf("sospeso\n");
             }
 
             associatedRecipe->activeOrders++;
-
             // Libera la memoria allocata per `nuovoOrdine`
             free(nuovoOrdine);
         }
@@ -1563,13 +1701,13 @@ int main() {
 
     //TODO
     // Usa stdin come file di input
-     //FILE *file = stdin;
+    FILE *file = stdin;
 
     // // Usa stdout come file di output
-     //FILE *file2 = stdout;
+    FILE *file2 = stdout;
 
-    FILE *file = fopen("open4.txt", "r");
-    FILE *file2 = fopen("TestOut.txt", "w");
+    //FILE *file = fopen("open10.txt", "r");
+    //FILE *file2 = fopen("TestOut.txt", "w");
 
     if (file == NULL) {
         perror("Errore nell'apertura del file");
@@ -1608,17 +1746,33 @@ int main() {
             buffer[len - 1] = '\0';
         }
 
+       // if(tempo==20)
+        //{
+            // stampaMagazzino(&magazzino);
+            //   stampaCatalogo(&catalogo);
+          //  printf("debug");
+        //}
+
         if (tempo % timeSpedizioni == 0 && tempo != 0) {
             // processa il corriere
-            printf("Carico Max: %d\n",corriere.caricoMax);
+            //printf("Carico Max: %d\n",corriere.caricoMax);
+            //stampaOrdinazioni(&ordinazioni);
             caricaOrdiniSuCorriere();
 
         }
 
         verificaScadenza();
 
+        //printf("tempo: %d -->", tempo);
+
+
+
         // Processa input
         processInput(buffer);
+        //if(tempo==50)
+        //{
+          //  stampaMagazzino(&magazzino);
+        //}
 
         tempo++;
     }
